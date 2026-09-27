@@ -1,6 +1,8 @@
 # Planet Crasher
 
-A remake of the old Flash game **Cosmic Crush**. Start as a tiny asteroid, crash into anything smaller than you to absorb it and grow, and avoid anything bigger — touching it is instant death, and its gravity pulls you in. Grow from asteroid to moon, planet, gas giant and star to go supernova.
+A remake of the old Flash game **Cosmic Crush**. Start as a tiny asteroid, crash into anything smaller than you to absorb it and grow, and avoid anything bigger — touching it is instant death, and its gravity pulls you in. Everything else is eating too, so the universe keeps changing around you.
+
+Grow from asteroid to moon, planet, gas giant and star, then become a **black hole** and swallow the whole arena to win. Fly off the edge of the circular arena and you'll wrap around to the other side.
 
 Here is whale making a change to show you a PR.
 
