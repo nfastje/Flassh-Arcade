@@ -4,10 +4,6 @@ A remake of the old Flash game **Cosmic Crush**. Start as a tiny asteroid, crash
 
 Grow from asteroid to moon, planet, gas giant and star, then become a **black hole** and swallow the whole arena to win. Fly off the edge of the circular arena and you'll wrap around to the other side.
 
-Here is whale making a change to show you a PR.
-
-Here is fastje making another change to acknowledge your PR.
-
 ## Play
 
 Download the latest `.zip` from the [Releases](../../releases) page, unzip it, and run `Planet Crasher.exe` (Windows).
