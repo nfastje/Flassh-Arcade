@@ -4,6 +4,8 @@ A remake of the old Flash game **Cosmic Crush**. Start as a tiny asteroid, crash
 
 Here is whale making a change to show you a PR.
 
+Here is fastje making another change to acknowledge your PR.
+
 ## Play
 
 Download the latest `.zip` from the [Releases](../../releases) page, unzip it, and run `Planet Crasher.exe` (Windows).
