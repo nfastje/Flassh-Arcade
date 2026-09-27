@@ -31,7 +31,7 @@ namespace CosmicCrush
             new Stage("Black Hole", 135f, BodyKind.BlackHole),
         };
 
-        const float ArenaRadius = 300f;       // the black hole wins when it is this big
+        const float ArenaRadius = 500f;       // the black hole wins when it is this big; must fit ten stars with room to move
         const float BodyMaxRadius = 120f;     // nothing but the player can grow past this, so only the player becomes a black hole
         const float ViewPerRadius = 10f;      // camera orthographic size / player radius
         const float MaxViewSize = ArenaRadius * 1.1f;
@@ -50,6 +50,8 @@ namespace CosmicCrush
         const float BodyGravityStrength = 0.8f; // body -> smaller body, in the bigger body's radii per second²
         const float BodyGravityRange = 4f;    // in radii of the pulling body
         const float BlackHolePull = 3f;       // black hole -> everything in the arena (falls off with 1/distance)
+        const float BlackHoleGrowthRate = 3f; // radius per second a black hole gains on its own, on top of eating...
+        const float BlackHoleGrowthAcceleration = 5f; // ...rising to (1 + this) times as fast by the time it fills the arena
         const float MaxBodySpeed = 5f;        // in player radii per second; stops gravity from flinging things absurdly fast
 
         // Population. Levels are stage indices; tiers are a body's level relative to the player's.
@@ -57,17 +59,16 @@ namespace CosmicCrush
         const int MaxBodies = 50;             // cap on active bodies of tier -1 and up
         const int MaxPlusTwo = 1;
         const int MaxPlusOne = 10;
-        const int MaxMinusOne = 30;           // the majority; the remainder are the player's own level
+        const int MaxMinusOne = 30;           // the majority
+        const int MaxPlayerLevel = MaxBodies - MaxPlusTwo - MaxPlusOne - MaxMinusOne; // the remaining 9
         const float PlusOneSpawnFraction = 0.25f;  // spawn within the bottom 25% of the level's size range
         const float PlayerLevelSpawnFraction = 0.5f;
-        const float SpawnInterval = 0.3f;     // seconds between refills once the field is populated
-        const float SpawnSpacing = 3f;        // minimum gap between a new body and existing ones, in player radii
+        const float SpawnInterval = 0.25f;    // seconds between refills
+        const int SpawnBatch = 3;             // bodies added per refill, so a level-up's worth of gaps fills quickly
+        const float SpawnSpacing = 3f;        // gap between a new body and each existing one, in radii of the smaller of the two (at most the player's)
 
         const float AbsorbDuration = 0.25f;
         const int MaxDebris = 300;
-        const string BestKey = "CosmicCrush.Best";
-
-        class FloatingText { public Vector2 Pos; public string Text; public float Age; public Color Color; }
 
         class Debris
         {
@@ -86,10 +87,9 @@ namespace CosmicCrush
         float targetRadius;
         readonly List<SpaceBody> bodies = new List<SpaceBody>();
         readonly List<Debris> debris = new List<Debris>();
-        readonly List<FloatingText> texts = new List<FloatingText>();
 
         State state;
-        int score, best, stageIndex;
+        int stageIndex;
         float shake, bannerTime, spawnTimer;
         string banner;
         Vector3 camBase;
@@ -113,7 +113,6 @@ namespace CosmicCrush
             sfx = gameObject.AddComponent<Sfx>();
             new GameObject("Star Field").AddComponent<StarField>().Init(cam);
             arenaEdge = CreateArenaEdge();
-            best = PlayerPrefs.GetInt(BestKey, 0);
 
             ResetWorld();
             state = State.Title;
@@ -164,8 +163,8 @@ namespace CosmicCrush
                     }
                     SimulatePlayer(dt);
                     UpdateBodies(dt);
-                    PlayerInteractions(dt);
-                    MaintainPopulation(dt);
+                    if (state == State.Playing) PlayerInteractions(dt);
+                    if (state == State.Playing) MaintainPopulation(dt); // not after a win or death this frame
                     break;
 
                 case State.Paused:
@@ -189,7 +188,6 @@ namespace CosmicCrush
 
             bannerTime -= dt;
             UpdateDebris(dt);
-            UpdateTexts(dt);
             UpdateCamera(dt);
         }
 
@@ -222,7 +220,6 @@ namespace CosmicCrush
             foreach (var b in bodies) Destroy(b.gameObject);
             bodies.Clear();
             foreach (var d in debris) d.T.gameObject.SetActive(false);
-            texts.Clear();
 
             if (player == null)
             {
@@ -239,7 +236,6 @@ namespace CosmicCrush
             player.Position = Vector2.zero;
             player.Velocity = Vector2.zero;
 
-            score = 0;
             banner = null;
             bannerTime = 0f;
             shake = 0f;
@@ -259,6 +255,14 @@ namespace CosmicCrush
             player.Velocity += ReadMove() * (Thrust * player.Radius * dt);
             player.Velocity *= Mathf.Exp(-Drag * dt);
             player.Position += player.Velocity * dt;
+            if (IsBlackHole)
+            {
+                // A black hole slowly swallows space itself, so the endgame can't stall once only small food fits.
+                float rate = BlackHoleGrowthRate * (1f + BlackHoleGrowthAcceleration * BlackHoleProgress);
+                targetRadius = Mathf.Min(ArenaRadius, targetRadius + rate * dt);
+                CheckStage();
+                if (state != State.Playing) return;
+            }
             GrowPlayer(dt);
             player.Tick(dt);
 
@@ -358,10 +362,6 @@ namespace CosmicCrush
             float relative = b.Radius / pr;
             targetRadius = Mathf.Min(ArenaRadius, Mathf.Sqrt(targetRadius * targetRadius + b.Radius * b.Radius * GrowthPerArea));
 
-            int pts = Mathf.Max(5, Mathf.RoundToInt(50f * relative * (stageIndex + 1)));
-            score += pts;
-            AddText(b.Position, $"+{pts}", Color.white);
-
             SpawnDebris(player.Position + dir * pr, b.MainColor, 6 + (int)(10f * relative), pr * 3f, b.Radius * 0.3f);
             sfx.PlayCrunch(relative);
             shake = Mathf.Max(shake, 0.25f * relative);
@@ -377,7 +377,6 @@ namespace CosmicCrush
             sfx.PlayDeath();
             shake = 1f;
             state = State.GameOver;
-            SaveBest();
         }
 
         void CheckStage()
@@ -388,7 +387,6 @@ namespace CosmicCrush
                 player.SetKind(Stages[stageIndex].Kind, Random.Range(0, ProceduralArt.VariantsPerKind));
                 banner = IsBlackHole ? "You are now a Black Hole! Swallow the universe!" : $"You are now a {Stages[stageIndex].Name}!";
                 bannerTime = 2.5f;
-                score += 1000 * stageIndex;
                 sfx.PlayLevelUp();
             }
 
@@ -399,20 +397,10 @@ namespace CosmicCrush
         {
             targetRadius = ArenaRadius;
             state = State.Won;
-            score += 25000;
             foreach (var b in bodies)
                 if (!b.Dying) Swallow(b, player);
-            SaveBest();
             sfx.PlayLevelUp();
             shake = 1f;
-        }
-
-        void SaveBest()
-        {
-            if (score <= best) return;
-            best = score;
-            PlayerPrefs.SetInt(BestKey, best);
-            PlayerPrefs.Save();
         }
 
         // ---------------------------------------------------------------- bodies
@@ -585,13 +573,31 @@ namespace CosmicCrush
             return n;
         }
 
-        /// <summary>Fill the quotas from the top: one body two levels up, ten one level up, a majority one level down, the rest at the player's level.</summary>
+        static readonly int[] SpawnTiers = { 2, 1, 0, -1 };
+
+        static int Quota(int tier) =>
+            tier == 2 ? MaxPlusTwo : tier == 1 ? MaxPlusOne : tier == 0 ? MaxPlayerLevel : MaxMinusOne;
+
+        /// <summary>
+        /// Spawn whichever tier is proportionally furthest below its quota, so every tier keeps being topped up as
+        /// bodies get eaten. When a tier can't exist (e.g. nothing above a star), the spare slots go to food.
+        /// </summary>
         int ChooseTier()
         {
-            if (TierExists(2) && CountTier(2) < MaxPlusTwo) return 2;
-            if (TierExists(1) && CountTier(1) < MaxPlusOne) return 1;
-            if (TierExists(-1) && (CountTier(-1) < MaxMinusOne || !TierExists(0))) return -1;
-            return 0;
+            int best = int.MinValue;
+            float bestNeed = 0f;
+            foreach (int tier in SpawnTiers)
+            {
+                if (!TierExists(tier)) continue;
+                float need = (Quota(tier) - CountTier(tier)) / (float)Quota(tier);
+                if (need > bestNeed)
+                {
+                    bestNeed = need;
+                    best = tier;
+                }
+            }
+            if (best != int.MinValue) return best;
+            return TierExists(-1) ? -1 : 0;
         }
 
         /// <summary>Spawn sizes are capped to the low end of each level so nothing starts out huge.</summary>
@@ -607,9 +613,15 @@ namespace CosmicCrush
 
         bool IsSpaceFree(Vector2 pos, float r)
         {
-            float gap = targetRadius * SpawnSpacing;
+            // Scale the gap by the smaller body so tiny leftovers don't block big areas and big bodies
+            // don't crowd everything else out of the arena.
+            float maxGap = Mathf.Min(Mathf.Min(r, targetRadius) * SpawnSpacing, ArenaRadius * 0.06f);
             foreach (var b in bodies)
-                if (!b.Dying && (b.Position - pos).magnitude < b.Radius + r + gap) return false;
+            {
+                if (b.Dying) continue;
+                float gap = Mathf.Min(maxGap, b.Radius * SpawnSpacing);
+                if ((b.Position - pos).magnitude < b.Radius + r + gap) return false;
+            }
             return true;
         }
 
@@ -622,13 +634,22 @@ namespace CosmicCrush
 
             Vector2 pp = player.Position;
             float viewRad = ViewHalfExtents().magnitude;
-            // Never spawn on top of the player; give dangerous bodies extra room to react to.
-            float clearance = player.Radius + r + (r >= player.Radius ? p * 6f : p * 2f);
+            if (IsBlackHole)
+            {
+                SpawnBlackHoleFood(level, r);
+                return;
+            }
+            // Keep clear of the player, with extra room to react for dangerous bodies (capped so it always fits in the arena).
+            float margin = r >= player.Radius ? p * 6f : Mathf.Min(p, r) * 2f;
+            float clearance = player.Radius + r + Mathf.Min(margin, ArenaRadius * 0.15f);
+            // Once zoomed out, the ring just off-screen lies entirely outside the arena, so don't waste attempts on it.
+            bool ringReachesArena = viewRad * 1.2f < ArenaRadius + pp.magnitude;
+            bool arenaFullyVisible = cam.orthographicSize >= ArenaRadius;
 
-            for (int attempt = 0; attempt < 16; attempt++)
+            for (int attempt = 0; attempt < 24; attempt++)
             {
                 Vector2 pos;
-                if (attempt < 10)
+                if (attempt < 10 && ringReachesArena)
                 {
                     float dist = initial && r < p
                         ? Random.Range(p * 5f, viewRad * 2f)
@@ -637,22 +658,61 @@ namespace CosmicCrush
                 }
                 else
                 {
-                    // Near the edge or zoomed out, the ring around the player falls outside the arena: use anywhere inside.
+                    // Anywhere inside the arena, preferring spots out of view (new bodies fade in either way).
                     pos = Random.insideUnitCircle * (ArenaRadius - r);
+                    if (attempt < 18 && !initial && !arenaFullyVisible && IsOnScreen(pos, r)) continue;
                 }
 
                 if (pos.magnitude + r > ArenaRadius || (pos - pp).magnitude < clearance || !IsSpaceFree(pos, r)) continue;
 
-                var b = SpaceBody.Create("Body", KindForRadius(r), Random.Range(0, ProceduralArt.VariantsPerKind), r, world);
-                b.Position = pos;
-                b.Velocity = Random.insideUnitCircle * (p * Random.Range(0.2f, 0.8f) / Mathf.Sqrt(Mathf.Max(1f, r / p)));
-                b.Level = level;
-                b.SpawnRadius = r;
-                b.SetSorting(SortingFor(r));
-                bodies.Add(b);
+                AddBody(level, r, pos);
                 return;
             }
         }
+
+        /// <summary>
+        /// Black hole food spawns only in the ring of space left between the black hole and the arena wall,
+        /// shrunk to fit as that ring narrows. It's all being swallowed anyway, so it can spawn close to the black hole.
+        /// </summary>
+        void SpawnBlackHoleFood(int level, float r)
+        {
+            Vector2 pp = player.Position;
+            float pr = player.Radius;
+
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                Vector2 dir = Random.insideUnitCircle.normalized;
+                // Distance from the black hole's centre to the wall along dir: solve |pp + dir*t| = ArenaRadius.
+                float along = Vector2.Dot(pp, dir);
+                float toWall = -along + Mathf.Sqrt(along * along - pp.sqrMagnitude + ArenaRadius * ArenaRadius);
+                float gap = toWall - pr;
+                if (gap < Stages[0].Radius * 2f) continue;
+
+                float size = Mathf.Min(r, gap * 0.4f * Random.Range(0.5f, 1f));
+                float dist = Random.Range(pr + size * 1.25f, toWall - size);
+                if (dist <= pr + size) continue;
+                Vector2 pos = pp + dir * dist;
+                if (pos.magnitude + size > ArenaRadius) continue;
+
+                AddBody(level, size, pos);
+                return;
+            }
+        }
+
+        void AddBody(int level, float r, Vector2 pos)
+        {
+            float p = targetRadius;
+            var b = SpaceBody.Create("Body", KindForRadius(r), Random.Range(0, ProceduralArt.VariantsPerKind), r, world);
+            b.Position = pos;
+            b.Velocity = Random.insideUnitCircle * (p * Random.Range(0.2f, 0.8f) / Mathf.Sqrt(Mathf.Max(1f, r / p)));
+            b.Level = level;
+            b.SpawnRadius = r;
+            b.SetSorting(SortingFor(r));
+            bodies.Add(b);
+        }
+
+        /// <summary>0 when the player first becomes a black hole, 1 when it fills the arena.</summary>
+        float BlackHoleProgress => Mathf.InverseLerp(Stages[Stages.Length - 1].Radius, ArenaRadius, targetRadius);
 
         void MaintainPopulation(float dt)
         {
@@ -671,12 +731,21 @@ namespace CosmicCrush
                 }
             }
 
-            spawnTimer -= dt;
-            if (CappedCount() < MaxBodies && spawnTimer <= 0f)
+            // As a black hole fills the arena, spawn faster and in bigger batches so the endgame accelerates.
+            float interval = SpawnInterval;
+            int batch = SpawnBatch;
+            if (IsBlackHole)
             {
-                SpawnBody(false);
-                spawnTimer = SpawnInterval;
+                float t = BlackHoleProgress;
+                interval *= Mathf.Lerp(1f, 0.15f, t);
+                batch += Mathf.RoundToInt(t * 6f);
             }
+
+            spawnTimer -= dt;
+            if (spawnTimer > 0f) return;
+            spawnTimer = interval;
+            int missing = Mathf.Min(MaxBodies - CappedCount(), batch);
+            for (int i = 0; i < missing; i++) SpawnBody(false);
         }
 
         // ---------------------------------------------------------------- effects
@@ -733,18 +802,6 @@ namespace CosmicCrush
             }
         }
 
-        void AddText(Vector2 pos, string text, Color color) =>
-            texts.Add(new FloatingText { Pos = pos, Text = text, Color = color });
-
-        void UpdateTexts(float dt)
-        {
-            for (int i = texts.Count - 1; i >= 0; i--)
-            {
-                texts[i].Age += dt;
-                if (texts[i].Age > 1.2f) texts.RemoveAt(i);
-            }
-        }
-
         void UpdateCamera(float dt)
         {
             float unclamped = Mathf.Max(player.Radius, 0.01f) * ViewPerRadius;
@@ -765,18 +822,16 @@ namespace CosmicCrush
 
         // ---------------------------------------------------------------- HUD
 
-        GUIStyle left, center, big, medium, small, button;
+        GUIStyle center, big, medium, small, button;
         float guiScale = -1f;
 
         void EnsureStyles()
         {
             float s = Screen.height / 720f;
-            if (left != null && Mathf.Approximately(s, guiScale)) return;
+            if (center != null && Mathf.Approximately(s, guiScale)) return;
             guiScale = s;
 
-            left = new GUIStyle(GUI.skin.label) { fontSize = Mathf.RoundToInt(24 * s), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
-            left.normal.textColor = Color.white;
-            center = new GUIStyle(left) { alignment = TextAnchor.MiddleCenter };
+            center = new GUIStyle(GUI.skin.label) { fontSize = Mathf.RoundToInt(24 * s), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             big = new GUIStyle(center) { fontSize = Mathf.RoundToInt(72 * s) };
             medium = new GUIStyle(center) { fontSize = Mathf.RoundToInt(32 * s) };
             small = new GUIStyle(center) { fontSize = Mathf.RoundToInt(20 * s), fontStyle = FontStyle.Normal };
@@ -831,14 +886,6 @@ namespace CosmicCrush
             EnsureStyles();
             float s = guiScale, w = Screen.width, h = Screen.height;
 
-            foreach (var t in texts)
-            {
-                Vector3 sp = cam.WorldToScreenPoint(t.Pos + Vector2.up * (t.Age * cam.orthographicSize * 0.15f));
-                var c = t.Color;
-                c.a = 1f - t.Age / 1.2f;
-                Shadowed(new Rect(sp.x - 150f * s, h - sp.y - 15f * s, 300f * s, 30f * s), t.Text, small, c);
-            }
-
             if (state != State.Title) DrawHud(s, w, h);
 
             switch (state)
@@ -852,7 +899,6 @@ namespace CosmicCrush
                     Shadowed(new Rect(0, h * 0.40f + 112f * s, w, 30f * s), "ARROWS / WASD to move      Esc to pause", small, new Color(0.7f, 0.9f, 1f));
                     if (MenuButton(h * 0.66f, "Play")) Restart();
                     if (MenuButton(h * 0.66f + 60f * s, "Quit")) Quit();
-                    if (best > 0) Shadowed(new Rect(0, h * 0.66f + 120f * s, w, 30f * s), $"Best: {best:N0}", small, Color.gray);
                     break;
 
                 case State.Paused:
@@ -866,8 +912,7 @@ namespace CosmicCrush
                 case State.GameOver:
                     Fill(new Rect(0, 0, w, h), new Color(0.2f, 0f, 0f, 0.35f));
                     Shadowed(new Rect(0, h * 0.3f, w, 90f * s), "CRUSHED", big, new Color(1f, 0.4f, 0.3f));
-                    Shadowed(new Rect(0, h * 0.3f + 100f * s, w, 40f * s), $"Score: {score:N0}      Best: {best:N0}", medium, Color.white);
-                    Shadowed(new Rect(0, h * 0.3f + 150f * s, w, 30f * s), $"You made it to {Stages[stageIndex].Name}", small, Color.white);
+                    Shadowed(new Rect(0, h * 0.3f + 110f * s, w, 40f * s), $"You made it to {Stages[stageIndex].Name}", medium, Color.white);
                     if (MenuButton(h * 0.3f + 200f * s, "Try Again")) Restart();
                     if (MenuButton(h * 0.3f + 260f * s, "Quit")) Quit();
                     break;
@@ -875,8 +920,7 @@ namespace CosmicCrush
                 case State.Won:
                     Fill(new Rect(0, 0, w, h), new Color(0.1f, 0f, 0.15f, 0.35f));
                     Shadowed(new Rect(0, h * 0.3f, w, 90f * s), "UNIVERSE CONSUMED", big, new Color(0.85f, 0.6f, 1f));
-                    Shadowed(new Rect(0, h * 0.3f + 100f * s, w, 40f * s), $"Score: {score:N0}      Best: {best:N0}", medium, Color.white);
-                    Shadowed(new Rect(0, h * 0.3f + 150f * s, w, 30f * s), "You grew from a speck of rock into a black hole that swallowed everything.", small, Color.white);
+                    Shadowed(new Rect(0, h * 0.3f + 115f * s, w, 30f * s), "You grew from a speck of rock into a black hole that swallowed everything.", small, Color.white);
                     if (MenuButton(h * 0.3f + 200f * s, "Play Again")) Restart();
                     if (MenuButton(h * 0.3f + 260f * s, "Quit")) Quit();
                     break;
@@ -885,9 +929,6 @@ namespace CosmicCrush
 
         void DrawHud(float s, float w, float h)
         {
-            Shadowed(new Rect(20f * s, 12f * s, 400f * s, 32f * s), $"SCORE  {score:N0}", left, Color.white);
-            Shadowed(new Rect(20f * s, 42f * s, 400f * s, 24f * s), $"BEST  {Mathf.Max(best, score):N0}", left, new Color(0.7f, 0.7f, 0.7f));
-
             bool last = stageIndex + 1 >= Stages.Length;
             float from = Stages[stageIndex].Radius;
             float to = last ? ArenaRadius : Stages[stageIndex + 1].Radius;
