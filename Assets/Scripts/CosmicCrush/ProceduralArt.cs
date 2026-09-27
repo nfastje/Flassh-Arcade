@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace CosmicCrush
 {
-    public enum BodyKind { Rock, Moon, Planet, GasGiant, Star }
+    public enum BodyKind { Rock, Moon, Planet, GasGiant, Star, BlackHole }
 
     /// <summary>
     /// Generates every sprite in the game at runtime so the project needs no art assets.
@@ -154,6 +154,14 @@ namespace CosmicCrush
                     c = Hsv(h - 0.04f, 0.7f, 0.75f); // storm
                     break;
                 }
+                case BodyKind.BlackHole:
+                {
+                    // Accretion disk: white-hot inner edge fading to a coloured outer rim.
+                    float[] hues = { 0.07f, 0.05f, 0.09f, 0.75f, 0.6f, 0.02f };
+                    a = Hsv(hues[variant], 0.25f, 1f);
+                    b = Hsv(hues[variant], 0.9f, 0.9f);
+                    break;
+                }
                 default: // Star
                 {
                     float[] hues = { 0.13f, 0.12f, 0.14f, 0.07f, 0.02f, 0.6f };
@@ -250,6 +258,25 @@ namespace CosmicCrush
                             float e = ex * ex + ey * ey;
                             if (e < 1f) col = Color.Lerp(col, c, 1f - e);
                         }
+                        break;
+                    }
+
+                    case BodyKind.BlackHole:
+                    {
+                        const float horizon = 0.5f;
+                        shade = 1f;
+                        if (dist < horizon)
+                        {
+                            col = Color.black;
+                            break;
+                        }
+                        float k = (dist - horizon) / (1f - horizon); // 0 at the event horizon, 1 at the rim
+                        float ang = Mathf.Atan2(v, u) + k * 5f;      // spiral the noise into swirling arms
+                        float swirl = Fbm(ox + Mathf.Cos(ang) * 2f, oy + Mathf.Sin(ang) * 2f + k * 3f, 4);
+                        float heat = Mathf.Pow(1f - k, 1.5f) * (0.4f + 1.2f * swirl);
+                        col = Color.Lerp(b, a, 1f - k) * heat * 1.6f;
+                        if (k < 0.05f) col = Color.Lerp(Color.white, col, k / 0.05f); // photon ring
+                        alpha *= Mathf.Clamp01((1f - k) * 1.4f);
                         break;
                     }
 
