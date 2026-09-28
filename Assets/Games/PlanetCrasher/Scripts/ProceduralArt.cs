@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace CosmicCrush
+namespace PlanetCrasher
 {
     public enum BodyKind { Rock, Moon, Planet, GasGiant, Star, BlackHole }
 

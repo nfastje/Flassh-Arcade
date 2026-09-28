@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace CosmicCrush
+namespace PlanetCrasher
 {
     /// <summary>
     /// Screen-filling parallax starfield. Stars wrap around the view so it never runs out, at any zoom level.

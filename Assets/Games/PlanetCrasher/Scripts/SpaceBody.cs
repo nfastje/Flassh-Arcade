@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace CosmicCrush
+namespace PlanetCrasher
 {
     /// <summary>
     /// A round celestial body (the player or anything floating around). Movement is driven by GameManager.

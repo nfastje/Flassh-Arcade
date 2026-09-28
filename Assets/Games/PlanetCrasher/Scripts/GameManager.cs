@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using FlasshArcade;
 
-namespace CosmicCrush
+namespace PlanetCrasher
 {
     /// <summary>
     /// Runs the whole game: spawning, physics, crashes, growth, camera and HUD.
@@ -150,6 +151,11 @@ namespace CosmicCrush
                     {
                         Restart();
                         break;
+                    }
+                    if (Pressed(kb, Key.Escape))
+                    {
+                        Arcade.LoadHome();
+                        return;
                     }
                     UpdateBodies(dt);
                     MaintainPopulation(dt);
@@ -859,15 +865,6 @@ namespace CosmicCrush
             return GUI.Button(new Rect(Screen.width / 2f - 130f * s, y, 260f * s, 48f * s), text, button);
         }
 
-        static void Quit()
-        {
-#if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-#else
-            Application.Quit();
-#endif
-        }
-
         static void Fill(Rect r, Color color)
         {
             GUI.color = color;
@@ -892,13 +889,13 @@ namespace CosmicCrush
             {
                 case State.Title:
                     Fill(new Rect(0, 0, w, h), new Color(0f, 0f, 0f, 0.35f));
-                    Shadowed(new Rect(0, h * 0.18f, w, 90f * s), "COSMIC CRUSH", big, new Color(1f, 0.85f, 0.4f));
+                    Shadowed(new Rect(0, h * 0.18f, w, 90f * s), "PLANET CRASHER", big, new Color(1f, 0.85f, 0.4f));
                     Shadowed(new Rect(0, h * 0.40f, w, 30f * s), "Crash into anything smaller than you to absorb it and grow.", small, Color.white);
                     Shadowed(new Rect(0, h * 0.40f + 32f * s, w, 30f * s), "Touch anything bigger and you're crushed. Beware of its gravity.", small, Color.white);
                     Shadowed(new Rect(0, h * 0.40f + 64f * s, w, 30f * s), "Grow into a black hole and swallow the whole universe.", small, Color.white);
                     Shadowed(new Rect(0, h * 0.40f + 112f * s, w, 30f * s), "ARROWS / WASD to move      Esc to pause", small, new Color(0.7f, 0.9f, 1f));
                     if (MenuButton(h * 0.66f, "Play")) Restart();
-                    if (MenuButton(h * 0.66f + 60f * s, "Quit")) Quit();
+                    if (MenuButton(h * 0.66f + 60f * s, "Main Menu")) Arcade.LoadHome();
                     break;
 
                 case State.Paused:
@@ -906,7 +903,7 @@ namespace CosmicCrush
                     Shadowed(new Rect(0, h * 0.25f, w, 90f * s), "PAUSED", big, Color.white);
                     if (MenuButton(h * 0.25f + 120f * s, "Resume")) state = State.Playing;
                     if (MenuButton(h * 0.25f + 180f * s, "Restart")) Restart();
-                    if (MenuButton(h * 0.25f + 240f * s, "Quit")) Quit();
+                    if (MenuButton(h * 0.25f + 240f * s, "Main Menu")) Arcade.LoadHome();
                     break;
 
                 case State.GameOver:
@@ -914,7 +911,7 @@ namespace CosmicCrush
                     Shadowed(new Rect(0, h * 0.3f, w, 90f * s), "CRUSHED", big, new Color(1f, 0.4f, 0.3f));
                     Shadowed(new Rect(0, h * 0.3f + 110f * s, w, 40f * s), $"You made it to {Stages[stageIndex].Name}", medium, Color.white);
                     if (MenuButton(h * 0.3f + 200f * s, "Try Again")) Restart();
-                    if (MenuButton(h * 0.3f + 260f * s, "Quit")) Quit();
+                    if (MenuButton(h * 0.3f + 260f * s, "Main Menu")) Arcade.LoadHome();
                     break;
 
                 case State.Won:
@@ -922,7 +919,7 @@ namespace CosmicCrush
                     Shadowed(new Rect(0, h * 0.3f, w, 90f * s), "UNIVERSE CONSUMED", big, new Color(0.85f, 0.6f, 1f));
                     Shadowed(new Rect(0, h * 0.3f + 115f * s, w, 30f * s), "You grew from a speck of rock into a black hole that swallowed everything.", small, Color.white);
                     if (MenuButton(h * 0.3f + 200f * s, "Play Again")) Restart();
-                    if (MenuButton(h * 0.3f + 260f * s, "Quit")) Quit();
+                    if (MenuButton(h * 0.3f + 260f * s, "Main Menu")) Arcade.LoadHome();
                     break;
             }
         }

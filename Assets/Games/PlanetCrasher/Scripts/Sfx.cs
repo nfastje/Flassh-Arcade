@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace CosmicCrush
+namespace PlanetCrasher
 {
     /// <summary>
     /// Synthesizes all sound effects at startup so the project needs no audio assets.
