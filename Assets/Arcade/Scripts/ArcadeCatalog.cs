@@ -53,10 +53,16 @@ namespace FlasshArcade
                 new Color(0.35f, 0.85f, 1f)),
             new ArcadeGame(
                 "Towering Survival",
-                "Blocks rain from the sky and lava rises from below. Climb as high as you can. (Demo)",
+                "Blocks rain from the sky and lava rises from below. Climb as high as you can.",
                 "ToweringSurvival",
                 typeof(ToweringSurvival.ToweringSurvivalGame),
                 new Color(0.55f, 1f, 0.45f)),
+            new ArcadeGame(
+                "Medieval World Conquest",
+                "Build a village, raise an army and conquer the realm. (Early development)",
+                "MedievalWorldConquest",
+                typeof(MedievalWorldConquest.MedievalWorldConquestGame),
+                new Color(0.9f, 0.72f, 0.4f)),
         };
 
         /// <summary>The catalog entry for a scene, or null if the scene isn't a game.</summary>

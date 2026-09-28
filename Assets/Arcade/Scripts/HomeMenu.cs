@@ -84,6 +84,14 @@ namespace FlasshArcade
             if (GUI.Button(new Rect(w / 2f - 110f * s, quitY, 220f * s, 48f * s), "Quit", button)) Arcade.Quit();
         }
 
+        /// <summary>Shrinks the style's font from <paramref name="maxSize"/> until the text fits on one line, so long names show in full.</summary>
+        static void FitFontSize(GUIStyle style, string text, float width, int maxSize)
+        {
+            var content = new GUIContent(text);
+            style.fontSize = maxSize;
+            while (style.fontSize > 12 && style.CalcSize(content).x > width) style.fontSize--;
+        }
+
         bool DrawCard(Rect r, int index)
         {
             var game = ArcadeCatalog.Games[index];
@@ -96,8 +104,9 @@ namespace FlasshArcade
             Fill(new Rect(r.x, r.y, 6f * s, r.height), game.Accent);
             if (lit) Outline(r, 2f * s, new Color(game.Accent.r, game.Accent.g, game.Accent.b, 0.85f));
 
-            float pad = 24f * s;
-            Text(new Rect(r.x + pad, r.y + 16f * s, r.width - pad * 1.5f, 40f * s), game.Title, cardTitle, game.Accent);
+            float pad = 24f * s, titleWidth = r.width - pad * 1.5f;
+            FitFontSize(cardTitle, game.Title, titleWidth, Mathf.RoundToInt(30 * s));
+            Text(new Rect(r.x + pad, r.y + 16f * s, titleWidth, 40f * s), game.Title, cardTitle, game.Accent);
             Text(new Rect(r.x + pad, r.y + 60f * s, r.width - pad * 1.5f, r.height - 96f * s), game.Description, cardText, new Color(0.85f, 0.87f, 0.95f), false);
             Text(new Rect(r.x, r.y, r.width - 18f * s, r.height - 12f * s), game.ComingSoon ? "COMING SOON" : "PLAY  >",
                 cardHint, lit ? game.Accent : new Color(0.6f, 0.6f, 0.7f));

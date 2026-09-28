@@ -1,0 +1,1026 @@
+/* Medieval World Conquest: dark wood bars, parchment panels, brass accents. */
+
+.screen {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+}
+
+.centered {
+    align-items: center;
+    justify-content: center;
+}
+
+.dim {
+    background-color: rgba(10, 6, 2, 0.55);
+}
+
+/* ---------------------------------------------------------------- parchment panels */
+
+.panel {
+    background-color: rgb(241, 227, 195);
+    border-width: 3px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 8px;
+    padding: 18px 24px;
+    color: rgb(58, 42, 24);
+    align-items: center;
+}
+
+.title {
+    font-size: 44px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+    -unity-text-align: middle-center;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    font-size: 17px;
+    color: rgb(110, 84, 54);
+    -unity-text-align: middle-center;
+    margin-bottom: 14px;
+    white-space: normal;
+}
+
+.heading {
+    font-size: 20px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+    margin-top: 12px;
+    margin-bottom: 6px;
+}
+
+.body-text {
+    font-size: 15px;
+    color: rgb(58, 42, 24);
+    white-space: normal;
+    -unity-text-align: middle-center;
+    max-width: 520px;
+}
+
+.error-text {
+    font-size: 15px;
+    color: rgb(150, 40, 25);
+    white-space: normal;
+    -unity-text-align: middle-center;
+    margin-bottom: 8px;
+}
+
+.divider {
+    height: 2px;
+    width: 100%;
+    background-color: rgba(122, 90, 51, 0.4);
+    margin: 14px 0;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+    background-color: rgb(139, 90, 43);
+    border-width: 2px;
+    border-color: rgb(84, 52, 22);
+    border-radius: 6px;
+    color: rgb(250, 238, 212);
+    font-size: 18px;
+    -unity-font-style: bold;
+    min-width: 220px;
+    height: 44px;
+    margin: 5px;
+    transition-duration: 0.1s;
+}
+
+.btn:hover {
+    background-color: rgb(163, 110, 58);
+}
+
+.btn:active {
+    background-color: rgb(110, 70, 32);
+}
+
+.btn--small {
+    min-width: 0;
+    height: 34px;
+    font-size: 15px;
+    padding: 0 12px;
+}
+
+.option-row {
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.option {
+    background-color: rgb(226, 206, 166);
+    border-width: 2px;
+    border-color: rgb(160, 126, 82);
+    border-radius: 6px;
+    color: rgb(58, 42, 24);
+    font-size: 16px;
+    margin: 4px;
+    padding: 6px 12px;
+    min-width: 70px;
+    white-space: normal;
+}
+
+.option:hover {
+    background-color: rgb(236, 219, 184);
+}
+
+.option--selected {
+    background-color: rgb(139, 90, 43);
+    border-color: rgb(84, 52, 22);
+    color: rgb(250, 238, 212);
+}
+
+.option--selected:hover {
+    background-color: rgb(163, 110, 58);
+}
+
+.option:disabled {
+    opacity: 0.4;
+}
+
+.option-wide {
+    width: 250px;
+    -unity-text-align: middle-center;
+}
+
+/* ---------------------------------------------------------------- in-game HUD */
+
+.top-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 52px;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 14px;
+    background-color: rgb(59, 42, 26);
+    border-bottom-width: 3px;
+    border-color: rgb(140, 105, 50);
+}
+
+.top-title {
+    justify-content: center;
+    margin-right: 18px;
+}
+
+.top-village-line {
+    flex-direction: row;
+    align-items: flex-end;
+}
+
+.top-player {
+    font-size: 12px;
+    color: rgb(200, 180, 140);
+    margin-bottom: -2px;
+}
+
+.village-name {
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: rgb(232, 200, 114);
+    margin-right: 8px;
+}
+
+.top-info {
+    font-size: 13px;
+    color: rgb(200, 180, 140);
+}
+
+.resource {
+    flex-direction: row;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 5px;
+    padding: 3px 10px;
+    margin-right: 8px;
+}
+
+.resource-name {
+    font-size: 13px;
+    color: rgb(200, 180, 140);
+    margin-right: 6px;
+}
+
+.resource-value {
+    font-size: 16px;
+    -unity-font-style: bold;
+    color: rgb(245, 235, 210);
+}
+
+.resource-value--full {
+    color: rgb(255, 120, 95);
+}
+
+.resource-rate {
+    font-size: 12px;
+    color: rgb(170, 205, 130);
+    margin-left: 5px;
+}
+
+.spacer {
+    flex-grow: 1;
+}
+
+.clock {
+    font-size: 17px;
+    -unity-font-style: bold;
+    color: rgb(245, 235, 210);
+    margin-right: 10px;
+}
+
+.speed-tag {
+    font-size: 13px;
+    color: rgb(200, 180, 140);
+    margin-right: 12px;
+}
+
+.tab-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 56px;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    background-color: rgb(59, 42, 26);
+    border-top-width: 3px;
+    border-color: rgb(140, 105, 50);
+}
+
+.tab {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 2px;
+    border-color: rgb(110, 80, 40);
+    border-radius: 6px;
+    color: rgb(220, 200, 160);
+    font-size: 16px;
+    -unity-font-style: bold;
+    width: 130px;
+    height: 38px;
+    margin: 0 6px;
+}
+
+.tab:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.tab--selected {
+    background-color: rgb(139, 90, 43);
+    border-color: rgb(232, 200, 114);
+    color: rgb(250, 238, 212);
+}
+
+.tab-content {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 55px;
+    bottom: 59px;
+    align-items: center;
+    justify-content: center;
+}
+
+.note {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    background-color: rgba(241, 227, 195, 0.92);
+    border-width: 2px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: rgb(58, 42, 24);
+    font-size: 14px;
+    max-width: 340px;
+    white-space: normal;
+}
+
+/* ---------------------------------------------------------------- village tab */
+
+.side-panel {
+    position: absolute;
+    right: 0;
+    top: 55px;
+    bottom: 59px;
+    background-color: rgb(241, 227, 195);
+    border-left-width: 3px;
+    border-color: rgb(122, 90, 51);
+    padding: 10px 12px;
+}
+
+.detail {
+    background-color: rgb(229, 210, 172);
+    border-width: 2px;
+    border-color: rgb(160, 126, 82);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+}
+
+.detail-title {
+    font-size: 17px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+.detail-text {
+    font-size: 13px;
+    color: rgb(58, 42, 24);
+    white-space: normal;
+    margin-top: 2px;
+}
+
+.detail-effect {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(60, 95, 35);
+    white-space: normal;
+    margin-top: 4px;
+}
+
+.build-list {
+    flex-grow: 1;
+}
+
+.build-row {
+    background-color: rgba(255, 255, 255, 0.35);
+    border-width: 2px;
+    border-color: rgba(122, 90, 51, 0.45);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+}
+
+.build-row:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+
+.build-row--selected {
+    border-color: rgb(192, 140, 40);
+    background-color: rgba(255, 236, 170, 0.6);
+}
+
+.row-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.row-title {
+    font-size: 15px;
+    -unity-font-style: bold;
+    color: rgb(72, 44, 18);
+}
+
+.row-level {
+    font-size: 13px;
+    color: rgb(110, 84, 54);
+}
+
+.row-info {
+    font-size: 12px;
+    color: rgb(58, 42, 24);
+    white-space: normal;
+    margin-top: 2px;
+}
+
+.row-reason {
+    font-size: 12px;
+    color: rgb(150, 40, 25);
+    white-space: normal;
+}
+
+.build-btn {
+    margin: 4px 0 2px 0;
+    height: 28px;
+    font-size: 13px;
+}
+
+.build-btn:disabled {
+    opacity: 0.45;
+}
+
+.queue-panel {
+    position: absolute;
+    left: 12px;
+    top: 64px;
+    width: 300px;
+    background-color: rgba(241, 227, 195, 0.94);
+    border-width: 2px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 6px;
+    padding: 4px 10px 8px 10px;
+}
+
+.queue-item {
+    margin-bottom: 6px;
+}
+
+.progress {
+    height: 8px;
+    background-color: rgba(0, 0, 0, 0.18);
+    border-radius: 4px;
+    margin-top: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0;
+    background-color: rgb(110, 150, 60);
+    border-radius: 4px;
+}
+
+.cancel-btn {
+    margin: 4px 0 0 0;
+    height: 24px;
+    font-size: 12px;
+    background-color: rgb(140, 60, 40);
+}
+
+.badge {
+    position: absolute;
+    translate: -50% 0;
+    background-color: rgba(59, 42, 26, 0.85);
+    border-width: 1px;
+    border-color: rgb(140, 105, 50);
+    border-radius: 4px;
+    color: rgb(245, 225, 170);
+    font-size: 12px;
+    -unity-font-style: bold;
+    padding: 1px 6px;
+    margin: 0;
+    height: 20px;
+}
+
+.badge:hover {
+    background-color: rgba(100, 72, 40, 0.95);
+}
+
+.badge--selected {
+    border-color: rgb(255, 215, 90);
+    color: rgb(255, 240, 190);
+}
+
+/* ---------------------------------------------------------------- army tab */
+
+.army {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 55px;
+    bottom: 59px;
+    flex-direction: row;
+    background-color: rgb(241, 227, 195);
+    padding: 10px 14px;
+}
+
+.army-garrison {
+    width: 330px;
+    padding-right: 14px;
+    margin-right: 14px;
+    border-right-width: 2px;
+    border-color: rgba(122, 90, 51, 0.4);
+}
+
+.garrison-line {
+    padding: 2px 0;
+}
+
+.garrison-count {
+    font-size: 15px;
+    -unity-font-style: bold;
+    color: rgb(58, 42, 24);
+}
+
+.garrison-count--none {
+    color: rgba(58, 42, 24, 0.35);
+}
+
+.army-note {
+    margin-top: 10px;
+    -unity-font-style: italic;
+}
+
+.army-recruit {
+    flex-grow: 1;
+}
+
+.army-section {
+    margin-bottom: 10px;
+}
+
+.unit-row--locked {
+    opacity: 0.55;
+}
+
+.unit-stats {
+    color: rgb(92, 70, 40);
+}
+
+.unit-controls {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.count-btn {
+    min-width: 40px;
+    height: 26px;
+    margin: 0 3px 0 0;
+    padding: 0 6px;
+    font-size: 13px;
+}
+
+.unit-count {
+    min-width: 52px;
+    font-size: 16px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    color: rgb(58, 42, 24);
+    margin-right: 3px;
+}
+
+.recruit-btn {
+    height: 26px;
+    margin: 0 0 0 8px;
+    font-size: 13px;
+    min-width: 150px;
+}
+
+.recruit-btn:disabled {
+    opacity: 0.45;
+}
+
+.recruit-item {
+    background-color: rgba(255, 255, 255, 0.35);
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+
+/* ---------------------------------------------------------------- map tab */
+
+.map-hover {
+    margin: 6px 0;
+    min-height: 18px;
+}
+
+.map-home-btn {
+    align-self: flex-start;
+    margin: 0 0 8px 0;
+}
+
+.map-card {
+    margin-top: 4px;
+}
+
+.map-travel-title {
+    margin-top: 8px;
+    margin-bottom: 2px;
+}
+
+.map-action {
+    min-width: 110px;
+    height: 30px;
+}
+
+.map-action:disabled {
+    opacity: 0.45;
+}
+
+.map-legend {
+    margin-bottom: 8px;
+}
+
+/* The map panel's top section never shrinks; the village details under it scroll instead. */
+.map-header {
+    flex-shrink: 0;
+}
+
+.map-header > * {
+    flex-shrink: 0;
+}
+
+.map-details {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.travel-line {
+    padding: 1px 0;
+}
+
+.travel-units {
+    flex-shrink: 1;
+    margin-top: 0;
+    margin-right: 8px;
+}
+
+.map-tooltip {
+    position: absolute;
+    background-color: rgba(59, 42, 26, 0.94);
+    border-width: 2px;
+    border-color: rgb(140, 105, 50);
+    border-radius: 5px;
+    padding: 4px 9px;
+}
+
+.tooltip-owner {
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.tooltip-title {
+    font-size: 15px;
+    -unity-font-style: bold;
+    color: rgb(232, 200, 114);
+}
+
+.tooltip-text {
+    font-size: 13px;
+    color: rgb(245, 235, 210);
+}
+
+.legend-note {
+    margin-top: 3px;
+    -unity-font-style: italic;
+}
+
+.card-village {
+    margin-top: 1px;
+}
+
+.minimap {
+    position: absolute;
+    left: 12px;
+    bottom: 71px;
+    border-width: 3px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 4px;
+    background-color: rgb(20, 16, 10);
+    overflow: hidden;
+}
+
+.minimap-frame {
+    position: absolute;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.9);
+}
+
+.name-row {
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.name-field {
+    width: 220px;
+    margin: 0;
+}
+
+.legend-entry {
+    flex-direction: row;
+    align-items: center;
+}
+
+.legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: rgb(58, 42, 24);
+    margin-right: 8px;
+}
+
+/* ---------------------------------------------------------------- troop movements (army tab) */
+
+.movements {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 60px;
+}
+
+.movement {
+    border-left-width: 4px;
+    border-color: rgb(110, 150, 60);
+}
+
+.movement--incoming {
+    border-color: rgb(170, 45, 30);
+    background-color: rgba(220, 120, 100, 0.35);
+}
+
+.movement--incoming .movement-title {
+    color: rgb(150, 30, 20);
+}
+
+.movement-title {
+    font-size: 13px;
+    white-space: normal;
+}
+
+.incoming-warning {
+    background-color: rgb(150, 35, 22);
+    border-width: 2px;
+    border-color: rgb(255, 150, 110);
+    border-radius: 5px;
+    color: rgb(255, 235, 215);
+    font-size: 14px;
+    -unity-font-style: bold;
+    padding: 3px 10px;
+    margin-right: 10px;
+}
+
+.incoming-panel {
+    position: absolute;
+    left: 12px;
+    bottom: 69px;
+    max-height: 170px;
+    background-color: rgba(241, 227, 195, 0.95);
+    border-width: 2px;
+    border-left-width: 5px;
+    border-color: rgb(170, 45, 30);
+    border-radius: 6px;
+    padding: 4px 10px 6px 10px;
+}
+
+.incoming-heading {
+    color: rgb(150, 30, 20);
+    margin-bottom: 2px;
+}
+
+.incoming-list {
+    flex-shrink: 1;
+}
+
+.incoming-line {
+    padding: 2px 0;
+    border-top-width: 1px;
+    border-color: rgba(122, 90, 51, 0.25);
+}
+
+.incoming-from {
+    flex-shrink: 1;
+    margin-top: 0;
+    margin-right: 10px;
+}
+
+.incoming-time {
+    color: rgb(150, 30, 20);
+}
+
+.protection-tag {
+    position: absolute;
+    left: 14px;
+    background-color: rgba(90, 140, 200, 0.35);
+    border-width: 1px;
+    border-color: rgb(140, 180, 230);
+    border-radius: 5px;
+    color: rgb(225, 238, 255);
+    font-size: 13px;
+    -unity-font-style: bold;
+    padding: 3px 9px;
+}
+
+.protection-text {
+    color: rgb(40, 80, 140);
+    -unity-font-style: bold;
+}
+
+.option-label {
+    margin: 0 4px 0 18px;
+    -unity-text-align: middle-center;
+    align-self: center;
+}
+
+/* ---------------------------------------------------------------- ranking tab */
+
+.ranking {
+    justify-content: center;
+}
+
+.ranking-column {
+    width: 620px;
+}
+
+.ranking-list {
+    flex-grow: 1;
+}
+
+.ranking-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 5px 8px;
+    border-bottom-width: 1px;
+    border-color: rgba(122, 90, 51, 0.25);
+}
+
+.ranking-header {
+    margin-top: 10px;
+    border-bottom-width: 2px;
+    border-color: rgba(122, 90, 51, 0.5);
+}
+
+.ranking-header > Label {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+.ranking-row--you {
+    background-color: rgba(255, 225, 140, 0.6);
+    border-radius: 4px;
+}
+
+.ranking-rank {
+    width: 40px;
+    font-size: 15px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+.ranking-name {
+    flex-grow: 1;
+    flex-direction: row;
+    align-items: center;
+}
+
+.ranking-name .row-reason {
+    margin-left: 8px;
+}
+
+.ranking-number {
+    width: 100px;
+    font-size: 15px;
+    color: rgb(58, 42, 24);
+    -unity-text-align: middle-right;
+}
+
+/* ---------------------------------------------------------------- send troops dialog */
+
+.btn:disabled {
+    opacity: 0.45;
+}
+
+.send-panel {
+    width: 620px;
+    max-height: 90%;
+    align-items: stretch;
+}
+
+.send-panel > .heading {
+    -unity-text-align: middle-center;
+    margin-top: 0;
+}
+
+.send-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 0;
+    border-bottom-width: 1px;
+    border-color: rgba(122, 90, 51, 0.25);
+}
+
+.send-name {
+    width: 140px;
+}
+
+.send-available {
+    width: 90px;
+}
+
+.catapult-target {
+    flex-grow: 1;
+    margin: 0;
+}
+
+.send-summary {
+    font-size: 14px;
+    margin: 10px 0 4px 0;
+    -unity-text-align: middle-center;
+}
+
+/* ---------------------------------------------------------------- reports tab */
+
+.reports-list-column {
+    width: 380px;
+    padding-right: 14px;
+    margin-right: 14px;
+    border-right-width: 2px;
+    border-color: rgba(122, 90, 51, 0.4);
+}
+
+.reports-actions {
+    justify-content: flex-start;
+    margin-bottom: 6px;
+}
+
+.reports-list {
+    flex-grow: 1;
+}
+
+.reports-detail {
+    flex-grow: 1;
+}
+
+.report-item {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-width: 2px;
+    border-left-width: 5px;
+    border-color: rgba(122, 90, 51, 0.45);
+    border-left-color: rgb(110, 150, 60);
+    border-radius: 5px;
+    color: rgb(58, 42, 24);
+    font-size: 13px;
+    -unity-text-align: middle-left;
+    white-space: normal;
+    padding: 5px 8px;
+    margin: 0 0 5px 0;
+}
+
+.report-item:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+
+.report-item--lost {
+    border-left-color: rgb(170, 45, 30);
+}
+
+.report-item--unread {
+    -unity-font-style: bold;
+    background-color: rgba(255, 236, 170, 0.55);
+}
+
+.report-item--selected {
+    border-color: rgb(192, 140, 40);
+    background-color: rgba(255, 225, 140, 0.75);
+}
+
+.report-side {
+    margin-top: 12px;
+    margin-bottom: 4px;
+}
+
+.troop-table {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-width: 1px;
+    border-color: rgba(122, 90, 51, 0.45);
+    border-radius: 5px;
+    padding: 4px 6px;
+    align-self: flex-start;
+}
+
+.troop-row {
+    flex-direction: row;
+}
+
+.troop-cell {
+    width: 62px;
+    font-size: 13px;
+    color: rgb(58, 42, 24);
+    -unity-text-align: middle-center;
+    padding: 2px 0;
+}
+
+.troop-cell--zero {
+    color: rgba(58, 42, 24, 0.3);
+}
+
+.troop-head {
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+.troop-label {
+    width: 60px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-left;
+}
+
+.toast {
+    position: absolute;
+    top: 66px;
+    left: 0;
+    right: 0;
+    align-items: center;
+}
+
+.toast-label {
+    background-color: rgba(241, 227, 195, 0.95);
+    border-width: 2px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 6px;
+    padding: 8px 16px;
+    color: rgb(58, 42, 24);
+    font-size: 16px;
+    -unity-font-style: bold;
+}

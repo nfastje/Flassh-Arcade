@@ -17,5 +17,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Games/ToweringSurvival/Scenes/ToweringSurvival.unity
     guid: ed21876aeaf743aba74d077a15d21539
+  - enabled: 1
+    path: Assets/Games/MedievalWorldConquest/Scenes/MedievalWorldConquest.unity
+    guid: 8670ee770f0f4694876d43e2b0330463
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
