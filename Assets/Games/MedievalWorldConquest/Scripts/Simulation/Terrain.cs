@@ -18,6 +18,8 @@ namespace MedievalWorldConquest.Simulation
     {
         /// <summary>Fields this close to the map centre are always open grass, so the player never starts in a lake.</summary>
         public const double StartClearingRadius = 4;
+        /// <summary>The chance of any field being a pond.</summary>
+        public const double PondChance = 0.005;
 
         public static TerrainType At(int seed, int x, int y)
         {
@@ -25,8 +27,9 @@ namespace MedievalWorldConquest.Simulation
             double c = World.MapSize / 2.0;
             if ((x - c) * (x - c) + (y - c) * (y - c) < StartClearingRadius * StartClearingRadius) return TerrainType.Grass;
 
+            // Water is only the odd pond, a single field, as on Tribal Wars' maps: about one field in two hundred.
+            if (Hash(seed ^ 0x6A09E667, x, y) < PondChance) return TerrainType.Water;
             double height = Fbm(seed, x * 0.07, y * 0.07);
-            if (height < 0.36) return TerrainType.Water;
             if (height > 0.66) return TerrainType.Hills;
             if (Fbm(seed + 7919, x * 0.11, y * 0.11) > 0.56) return TerrainType.Forest;
             return TerrainType.Grass;

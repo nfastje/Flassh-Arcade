@@ -15,6 +15,7 @@ namespace MedievalWorldConquest
         {
             grass = clearing = stake = tree = glow = reinforcedStake = stoneWall = mapHut = patch = null;
             System.Array.Clear(mapVillages, 0, mapVillages.Length);
+            mapDot = mapRing = pixel = null;
             material = null;
         }
 
@@ -133,126 +134,215 @@ namespace MedievalWorldConquest
 
         /// <summary>How many sizes of village the world map shows.</summary>
         public const int MapVillageTiers = 6;
-        static readonly Sprite[] mapVillages = new Sprite[MapVillageTiers];
+        static readonly Sprite[] mapVillages = new Sprite[MapVillageTiers * 2];
+        static Sprite mapDot, mapRing;
 
         /// <summary>
-        /// A village on the world map, one field (1 unit) across, pivot in the centre, in greys for tinting with its
-        /// owner's colour. Tier 0 is a lone hut; each tier adds more and bigger buildings, then a palisade, a stone
-        /// wall and towers, up to a castle at tier 5, like Tribal Wars' six village sizes.
+        /// A village on the world map, one field (1 unit) across, pivot in the centre, in full colour like Tribal
+        /// Wars' map: tiers 0 and 1 a ring of palisade round a dirt yard with a few huts, tiers 2 to 5 a stone-walled
+        /// octagon that fills up with houses, towers and finally a keep. Barbarian villages are the same pictures in
+        /// dull greys.
         /// </summary>
-        public static Sprite MapVillage(int tier)
+        public static Sprite MapVillage(int tier, bool barbarian)
         {
             tier = Mathf.Clamp(tier, 0, MapVillageTiers - 1);
-            if (mapVillages[tier] != null) return mapVillages[tier];
+            int key = tier * 2 + (barbarian ? 1 : 0);
+            if (mapVillages[key] != null) return mapVillages[key];
             const int size = 48;
             var px = new Color[size * size];
             DrawMapVillage(px, size, tier);
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = $"MapVillage{tier}", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            Outline(px, size, new Color(0.16f, 0.12f, 0.08f));
+            if (barbarian)
+                for (int i = 0; i < px.Length; i++)
+                {
+                    float g = (px[i].r * 0.3f + px[i].g * 0.59f + px[i].b * 0.11f) * 0.85f;
+                    px[i] = new Color(g, g, g, px[i].a);
+                }
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = $"MapVillage{tier}{(barbarian ? "b" : "")}", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
             tex.SetPixels(px);
             tex.Apply(false, true);
-            return mapVillages[tier] = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size, 0, SpriteMeshType.FullRect);
+            return mapVillages[key] = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size, 0, SpriteMeshType.FullRect);
         }
+
+        static Sprite pixel;
+
+        /// <summary>A plain white square, 1 unit across, pivot in the centre: stretched and tinted for lines.</summary>
+        public static Sprite Pixel => pixel != null ? pixel : pixel = Make("Pixel", 4, 4, 4f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) => Color.white);
+
+        /// <summary>The owner's marker in the corner of a map village: a white disc with a dark rim, for tinting.</summary>
+        public static Sprite MapDot => mapDot != null ? mapDot : mapDot = Make("MapDot", 16, 16, 16f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
+        {
+            float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(8f, 8f));
+            if (d > 7.5f) return Color.clear;
+            return d > 5.8f ? new Color(0.12f, 0.1f, 0.08f, 1f) : Color.white;
+        });
+
+        /// <summary>A rounded-square outline one field across, for marking the player's own villages (tinted).</summary>
+        public static Sprite MapRing => mapRing != null ? mapRing : mapRing = Make("MapRing", 48, 48, 48f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
+        {
+            // Distance from a rounded square's edge (a superellipse).
+            float u = Mathf.Abs(x + 0.5f - 24f) / 23f, v = Mathf.Abs(y + 0.5f - 24f) / 23f;
+            float d = Mathf.Pow(Mathf.Pow(u, 4) + Mathf.Pow(v, 4), 0.25f);
+            return d <= 1f && d > 0.88f ? Color.white : Color.clear;
+        });
+
+        static readonly Color Dirt = new Color(0.78f, 0.66f, 0.45f), Palisade = new Color(0.52f, 0.34f, 0.18f);
+        static readonly Color WallStone = new Color(0.68f, 0.68f, 0.7f), HouseWall = new Color(0.94f, 0.89f, 0.76f);
+        static readonly Color RedRoof = new Color(0.72f, 0.26f, 0.17f), BlueRoof = new Color(0.3f, 0.42f, 0.72f), Thatch = new Color(0.8f, 0.64f, 0.34f);
 
         static void DrawMapVillage(Color[] px, int size, int tier)
         {
-            void Set(int x, int y, float shade)
+            void Set(int x, int y, Color c)
             {
                 if (x < 0 || y < 0 || x >= size || y >= size) return;
-                px[y * size + x] = new Color(shade, shade, shade, 1f);
+                px[y * size + x] = new Color(c.r, c.g, c.b, 1f);
+            }
+            float c0 = size / 2f;
+
+            void Disc(float r, Color c)
+            {
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                        if (Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(c0, c0)) <= r) Set(x, y, c);
             }
 
-            // A house: walls from (x0, y0), w wide and h tall, with a pointed roof of height roof. Stone houses get
-            // mortar lines; the outline is dark so houses stand apart from each other.
-            void House(int x0, int y0, int w, int h, int roof, bool stone)
+            // A ring of stakes: alternately lit and shaded, so it reads as a palisade.
+            void PalisadeRing(float r0, float r1)
+            {
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(c0, c0));
+                        if (d < r0 || d > r1) continue;
+                        float a = Mathf.Atan2(y + 0.5f - c0, x + 0.5f - c0);
+                        bool lit = Mathf.FloorToInt((a + Mathf.PI) / (Mathf.PI * 2f) * 40f) % 2 == 0;
+                        Set(x, y, lit ? Palisade : Palisade * 0.75f);
+                    }
+            }
+
+            // An octagon (filled or as a wall of the given thickness).
+            bool InOctagon(float x, float y, float r) =>
+                Mathf.Abs(x - c0) <= r && Mathf.Abs(y - c0) <= r && Mathf.Abs(x - c0) + Mathf.Abs(y - c0) <= r * 1.4f;
+
+            void Octagon(float r, Color c)
+            {
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                        if (InOctagon(x + 0.5f, y + 0.5f, r)) Set(x, y, c);
+            }
+
+            void StoneWall(float r, float thickness)
+            {
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        float fx = x + 0.5f, fy = y + 0.5f;
+                        if (!InOctagon(fx, fy, r) || InOctagon(fx, fy, r - thickness)) continue;
+                        bool mortar = (x + y) % 4 == 0;
+                        Set(x, y, mortar ? WallStone * 0.8f : WallStone);
+                    }
+            }
+
+            // A house seen from the front: walls with a door, under a pointed roof.
+            void House(int x0, int y0, int w, int h, int roof, Color roofColor)
             {
                 for (int y = y0; y < y0 + h; y++)
                     for (int x = x0; x < x0 + w; x++)
-                    {
-                        bool edge = x == x0 || x == x0 + w - 1 || y == y0;
-                        bool door = w >= 6 && Mathf.Abs(x - (x0 + w / 2)) <= 1 && y < y0 + Mathf.Max(2, h / 2);
-                        bool mortar = stone && ((y - y0) % 3 == 2 || (x + ((y - y0) / 3 % 2) * 2) % 4 == 0);
-                        Set(x, y, edge ? 0.4f : door ? 0.3f : mortar ? 0.78f : 1f);
-                    }
+                        Set(x, y, Mathf.Abs(x - (x0 + w / 2)) <= 0 && y < y0 + Mathf.Max(2, h / 2) ? new Color(0.3f, 0.2f, 0.12f) : HouseWall);
                 for (int r = 0; r < roof; r++)
                 {
-                    int half = (w / 2 + 1) - (r * (w / 2 + 1)) / Mathf.Max(1, roof);
-                    for (int x = x0 + w / 2 - half; x <= x0 + w / 2 + half - (w % 2 == 0 ? 1 : 0); x++)
-                    {
-                        bool edge = x == x0 + w / 2 - half || x == x0 + w / 2 + half - (w % 2 == 0 ? 1 : 0) || r == roof - 1;
-                        Set(x, y0 + h + r, edge ? 0.4f : 0.72f);
-                    }
+                    int half = (w + 1) / 2 + 1 - (r * ((w + 1) / 2 + 1)) / Mathf.Max(1, roof);
+                    for (int x = x0 + w / 2 - half; x <= x0 + (w - 1) / 2 + half; x++)
+                        Set(x, y0 + h + r, x < x0 + w / 2 ? roofColor : roofColor * 0.8f);
                 }
             }
 
-            // A tower: a tall stone block with battlements.
-            void Tower(int x0, int y0, int w, int h)
+            // A round tower of stone with a blue cone roof.
+            void Tower(int cx, int y0, int w, int h)
             {
-                House(x0, y0, w, h, 0, true);
-                for (int x = x0; x < x0 + w; x += 2)
-                    for (int y = y0 + h; y < y0 + h + 2; y++) Set(x, y, x == x0 || x >= x0 + w - 2 ? 0.4f : 0.9f);
-            }
-
-            // A ring round the village: a palisade of stakes, or a stone wall.
-            void Ring(int x0, int y0, int x1, int y1, bool stone)
-            {
-                for (int x = x0; x <= x1; x++)
-                    for (int t = 0; t < (stone ? 3 : 2); t++)
-                    {
-                        float shade = stone ? (t == 0 ? 0.45f : 0.85f) : (x % 2 == 0 ? 0.62f : 0.5f);
-                        Set(x, y0 + t, shade);
-                        Set(x, y1 - t, shade);
-                    }
-                for (int y = y0; y <= y1; y++)
-                    for (int t = 0; t < (stone ? 3 : 2); t++)
-                    {
-                        float shade = stone ? (t == 0 ? 0.45f : 0.85f) : (y % 2 == 0 ? 0.62f : 0.5f);
-                        Set(x0 + t, y, shade);
-                        Set(x1 - t, y, shade);
-                    }
+                for (int y = y0; y < y0 + h; y++)
+                    for (int x = cx - w / 2; x < cx - w / 2 + w; x++)
+                        Set(x, y, (y - y0) % 3 == 2 ? WallStone * 0.8f : WallStone);
+                for (int r = 0; r < w; r++)
+                    for (int x = cx - w / 2 - 1 + r / 2; x <= cx + w / 2 - r / 2; x++)
+                        Set(x, y0 + h + r, x < cx ? BlueRoof : BlueRoof * 0.8f);
             }
 
             switch (tier)
             {
-                case 0: // a lone hut
-                    House(17, 12, 14, 10, 9, false);
+                case 0: // a small palisaded clearing with two huts
+                    Disc(16, Dirt);
+                    PalisadeRing(14, 17);
+                    House(15, 17, 8, 6, 5, Thatch);
+                    House(25, 21, 8, 6, 5, RedRoof);
                     break;
-                case 1: // two huts
-                    House(8, 16, 13, 9, 8, false);
-                    House(25, 10, 15, 10, 9, false);
+                case 1: // a bigger ring and three houses
+                    Disc(20, Dirt);
+                    PalisadeRing(17.5f, 21);
+                    House(12, 15, 9, 7, 5, RedRoof);
+                    House(25, 13, 9, 7, 5, Thatch);
+                    House(18, 25, 10, 7, 6, RedRoof);
                     break;
-                case 2: // a hamlet
-                    House(5, 20, 12, 9, 8, false);
-                    House(19, 24, 12, 8, 7, false);
-                    House(14, 6, 18, 11, 10, false);
-                    House(34, 12, 10, 9, 7, false);
+                case 2: // a stone-walled octagon with four houses
+                    Octagon(20, Dirt);
+                    StoneWall(21, 3);
+                    House(10, 12, 9, 7, 5, RedRoof);
+                    House(27, 12, 9, 7, 5, RedRoof);
+                    House(11, 25, 9, 7, 5, Thatch);
+                    House(26, 25, 10, 7, 6, RedRoof);
                     break;
-                case 3: // a village behind a palisade
-                    Ring(3, 3, 44, 44, false);
-                    House(7, 26, 11, 8, 7, false);
-                    House(22, 28, 11, 8, 7, false);
-                    House(9, 8, 13, 9, 8, false);
-                    House(26, 8, 15, 11, 10, false);
+                case 3: // fuller, with a tower
+                    Octagon(21, Dirt);
+                    StoneWall(22, 3);
+                    House(8, 10, 9, 7, 5, RedRoof);
+                    House(30, 10, 9, 7, 5, RedRoof);
+                    House(8, 25, 9, 7, 5, Thatch);
+                    House(30, 25, 9, 7, 5, RedRoof);
+                    House(18, 8, 11, 7, 6, RedRoof);
+                    Tower(24, 22, 6, 11);
                     break;
-                case 4: // a stone-walled town with a tower
-                    Ring(2, 2, 45, 45, true);
-                    Tower(19, 20, 10, 18);
-                    House(6, 24, 11, 8, 7, true);
-                    House(32, 24, 10, 8, 7, true);
-                    House(6, 6, 13, 9, 8, true);
-                    House(28, 6, 14, 9, 8, true);
+                case 4: // towers on the wall and a tall central tower
+                    Octagon(22, Dirt);
+                    StoneWall(23, 4);
+                    foreach (var (tx, ty) in new[] { (8, 30), (40, 30), (8, 5), (40, 5) }) Tower(tx, ty, 6, 6);
+                    House(10, 12, 9, 7, 5, RedRoof);
+                    House(29, 12, 9, 7, 5, RedRoof);
+                    House(12, 26, 9, 6, 5, RedRoof);
+                    House(28, 26, 9, 6, 5, RedRoof);
+                    Tower(24, 14, 8, 16);
                     break;
-                default: // a castle
-                    Ring(1, 1, 46, 46, true);
-                    Tower(2, 2, 8, 14);
-                    Tower(38, 2, 8, 14);
-                    Tower(2, 32, 8, 14);
-                    Tower(38, 32, 8, 14);
-                    House(13, 8, 22, 18, 0, true); // the keep
-                    Tower(17, 26, 14, 12);
+                default: // a castle: corner towers and a keep
+                    Octagon(23, Dirt);
+                    StoneWall(24, 4);
+                    foreach (var (tx, ty) in new[] { (7, 31), (41, 31), (7, 4), (41, 4) }) Tower(tx, ty, 7, 7);
+                    for (int y = 12; y < 30; y++)
+                        for (int x = 14; x < 34; x++)
+                            Set(x, y, (y % 3 == 2 || (x + (y / 3 % 2) * 2) % 5 == 0) ? WallStone * 0.8f : WallStone);
+                    for (int x = 14; x < 34; x += 3) Set(x, 30, WallStone);
+                    Tower(24, 30, 8, 8);
+                    for (int y = 12; y < 18; y++) Set(24, y, new Color(0.3f, 0.2f, 0.12f)); // the keep's gate
                     break;
             }
         }
 
+        /// <summary>A dark rim, one pixel wide, round everything drawn, so pictures stand out on the grass.</summary>
+        static void Outline(Color[] px, int size, Color rim)
+        {
+            var copy = (Color[])px.Clone();
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    if (copy[y * size + x].a > 0.5f) continue;
+                    bool edge = false;
+                    for (int oy = -1; oy <= 1 && !edge; oy++)
+                        for (int ox = -1; ox <= 1 && !edge; ox++)
+                        {
+                            int nx = x + ox, ny = y + oy;
+                            if (nx >= 0 && ny >= 0 && nx < size && ny < size && copy[ny * size + nx].a > 0.5f) edge = true;
+                        }
+                    if (edge) px[y * size + x] = rim;
+                }
+        }
         /// <summary>A round leafy tree, 1.4 units wide, pivot at the base of the trunk.</summary>
         public static Sprite Tree => tree != null ? tree : tree = Make("Tree", 64, 80, 64f / 1.4f, new Vector2(0.5f, 0f), TextureWrapMode.Clamp, (x, y) =>
         {

@@ -165,20 +165,57 @@
     border-color: rgb(140, 105, 50);
 }
 
+.village-arrow {
+    min-width: 0;
+    width: 26px;
+    height: 30px;
+    padding: 0;
+    margin: 0 4px;
+    font-size: 16px;
+}
+
+.end-panel {
+    max-width: 620px;
+}
+
+/* The player's name (to their profile) above the village's (back to the village view). The only part of the
+   bar that gives way when space is short: long names are cut off with an ellipsis. */
 .top-title {
     justify-content: center;
-    margin-right: 18px;
+    align-items: flex-start;
+    margin: 0 6px 0 2px;
+    flex-shrink: 1;
+    min-width: 60px;
+    max-width: 260px;
+    overflow: hidden;
 }
 
 .top-village-line {
     flex-direction: row;
     align-items: flex-end;
+    max-width: 100%;
+}
+
+/* Top-bar names are plain text that underlines, a little darker, under the pointer. */
+.top-link {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-bottom-width: 1px;
+    border-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+    height: auto;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    flex-shrink: 1;
 }
 
 .top-player {
     font-size: 12px;
     color: rgb(200, 180, 140);
-    margin-bottom: -2px;
 }
 
 .village-name {
@@ -191,15 +228,18 @@
 .top-info {
     font-size: 13px;
     color: rgb(200, 180, 140);
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .resource {
     flex-direction: row;
     align-items: center;
+    flex-shrink: 0;
     background-color: rgba(0, 0, 0, 0.25);
     border-radius: 5px;
-    padding: 3px 10px;
-    margin-right: 8px;
+    padding: 3px 8px;
+    margin-right: 6px;
 }
 
 .resource-name {
@@ -209,19 +249,16 @@
 }
 
 .resource-value {
-    font-size: 16px;
+    font-size: 15px;
     -unity-font-style: bold;
     color: rgb(245, 235, 210);
+    white-space: nowrap;
+    margin: 0;
+    padding: 0;
 }
 
 .resource-value--full {
     color: rgb(255, 120, 95);
-}
-
-.resource-rate {
-    font-size: 12px;
-    color: rgb(170, 205, 130);
-    margin-left: 5px;
 }
 
 .spacer {
@@ -229,65 +266,80 @@
 }
 
 .clock {
-    font-size: 17px;
+    font-size: 15px;
     -unity-font-style: bold;
     color: rgb(245, 235, 210);
-    margin-right: 10px;
+    margin: 0 6px 0 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .speed-tag {
     font-size: 13px;
     color: rgb(200, 180, 140);
-    margin-right: 12px;
+    margin-right: 8px;
+    flex-shrink: 0;
 }
 
-.tab-bar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 56px;
+.top-bar > .btn,
+.top-bar > .spacer {
+    flex-shrink: 0;
+}
+
+/* Top-bar buttons with an icon: the map, reports and ranking. */
+.icon-button {
     flex-direction: row;
-    justify-content: center;
     align-items: center;
-    background-color: rgb(59, 42, 26);
-    border-top-width: 3px;
-    border-color: rgb(140, 105, 50);
-}
-
-.tab {
     background-color: rgba(0, 0, 0, 0.2);
     border-width: 2px;
     border-color: rgb(110, 80, 40);
     border-radius: 6px;
-    color: rgb(220, 200, 160);
-    font-size: 16px;
-    -unity-font-style: bold;
-    width: 130px;
-    height: 38px;
-    margin: 0 6px;
+    padding: 2px 8px;
+    margin: 0 4px;
+    height: 36px;
+    min-width: 40px;
+    flex-shrink: 0;
+    justify-content: center;
+    overflow: visible;
 }
 
-.tab:hover {
-    background-color: rgba(255, 255, 255, 0.08);
+.icon-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
-.tab--selected {
+.icon-button--selected {
     background-color: rgb(139, 90, 43);
     border-color: rgb(232, 200, 114);
-    color: rgb(250, 238, 212);
 }
 
-.tab-content {
+.icon-button-label {
+    font-size: 15px;
+    -unity-font-style: bold;
+    color: rgb(240, 225, 190);
+    margin-left: 5px;
+}
+
+/* The small red count of unread reports on the scroll. */
+.unread-badge {
     position: absolute;
-    left: 0;
-    right: 0;
-    top: 55px;
-    bottom: 59px;
-    align-items: center;
-    justify-content: center;
+    right: -6px;
+    top: -6px;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background-color: rgb(200, 30, 25);
+    border-width: 1px;
+    border-color: rgb(255, 220, 200);
+    color: rgb(255, 255, 255);
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    padding: 0 3px;
 }
 
+.resource-icon {
+    margin-right: 5px;
+}
 .note {
     position: absolute;
     left: 16px;
@@ -304,39 +356,6 @@
 }
 
 /* ---------------------------------------------------------------- village tab */
-
-.side-panel {
-    position: absolute;
-    right: 0;
-    top: 55px;
-    bottom: 59px;
-    background-color: rgb(241, 227, 195);
-    border-left-width: 3px;
-    border-color: rgb(122, 90, 51);
-    padding: 10px 12px;
-}
-
-.detail {
-    background-color: rgb(229, 210, 172);
-    border-width: 2px;
-    border-color: rgb(160, 126, 82);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin-bottom: 4px;
-}
-
-.detail-title {
-    font-size: 17px;
-    -unity-font-style: bold;
-    color: rgb(92, 52, 20);
-}
-
-.detail-text {
-    font-size: 13px;
-    color: rgb(58, 42, 24);
-    white-space: normal;
-    margin-top: 2px;
-}
 
 .detail-effect {
     font-size: 13px;
@@ -408,18 +427,6 @@
     opacity: 0.45;
 }
 
-.queue-panel {
-    position: absolute;
-    left: 12px;
-    top: 64px;
-    width: 300px;
-    background-color: rgba(241, 227, 195, 0.94);
-    border-width: 2px;
-    border-color: rgb(122, 90, 51);
-    border-radius: 6px;
-    padding: 4px 10px 8px 10px;
-}
-
 .queue-item {
     margin-bottom: 6px;
 }
@@ -446,51 +453,49 @@
     background-color: rgb(140, 60, 40);
 }
 
-.badge {
+/* Tribal Wars' green level squares on the buildings. */
+.level-badge {
     position: absolute;
     translate: -50% 0;
-    background-color: rgba(59, 42, 26, 0.85);
+    min-width: 22px;
+    height: 20px;
+    padding: 0 4px;
+    margin: 0;
+    background-color: rgb(78, 128, 52);
     border-width: 1px;
-    border-color: rgb(140, 105, 50);
-    border-radius: 4px;
-    color: rgb(245, 225, 170);
+    border-color: rgb(210, 240, 180);
+    border-radius: 2px;
+    color: rgb(255, 255, 255);
     font-size: 12px;
     -unity-font-style: bold;
-    padding: 1px 6px;
-    margin: 0;
-    height: 20px;
+    -unity-text-align: middle-center;
 }
 
-.badge:hover {
-    background-color: rgba(100, 72, 40, 0.95);
+.level-badge:hover {
+    background-color: rgb(100, 160, 66);
 }
 
-.badge--selected {
-    border-color: rgb(255, 215, 90);
-    color: rgb(255, 240, 190);
+.level-timer {
+    position: absolute;
+    translate: -50% 0;
+    background-color: rgba(30, 50, 20, 0.85);
+    border-radius: 2px;
+    color: rgb(230, 250, 210);
+    font-size: 11px;
+    padding: 0 4px;
 }
-
-/* ---------------------------------------------------------------- army tab */
+/* ---------------------------------------------------------------- full-screen panels (reports, ranking) */
 
 .army {
     position: absolute;
     left: 0;
     right: 0;
     top: 55px;
-    bottom: 59px;
+    bottom: 0;
     flex-direction: row;
     background-color: rgb(241, 227, 195);
     padding: 10px 14px;
 }
-
-.army-garrison {
-    width: 330px;
-    padding-right: 14px;
-    margin-right: 14px;
-    border-right-width: 2px;
-    border-color: rgba(122, 90, 51, 0.4);
-}
-
 .garrison-line {
     padding: 2px 0;
 }
@@ -503,19 +508,6 @@
 
 .garrison-count--none {
     color: rgba(58, 42, 24, 0.35);
-}
-
-.army-note {
-    margin-top: 10px;
-    -unity-font-style: italic;
-}
-
-.army-recruit {
-    flex-grow: 1;
-}
-
-.army-section {
-    margin-bottom: 10px;
 }
 
 .unit-row--locked {
@@ -569,60 +561,16 @@
 
 /* ---------------------------------------------------------------- map tab */
 
-.map-hover {
-    margin: 6px 0;
-    min-height: 18px;
+/* Bottom left: "go to my village" above the minimap. */
+.map-corner {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    align-items: flex-start;
 }
 
 .map-home-btn {
-    align-self: flex-start;
-    margin: 0 0 8px 0;
-}
-
-.map-card {
-    margin-top: 4px;
-}
-
-.map-travel-title {
-    margin-top: 8px;
-    margin-bottom: 2px;
-}
-
-.map-action {
-    min-width: 110px;
-    height: 30px;
-}
-
-.map-action:disabled {
-    opacity: 0.45;
-}
-
-.map-legend {
-    margin-bottom: 8px;
-}
-
-/* The map panel's top section never shrinks; the village details under it scroll instead. */
-.map-header {
-    flex-shrink: 0;
-}
-
-.map-header > * {
-    flex-shrink: 0;
-}
-
-.map-details {
-    flex-grow: 1;
-    flex-shrink: 1;
-}
-
-.travel-line {
-    padding: 1px 0;
-}
-
-.travel-units {
-    flex-shrink: 1;
-    margin-top: 0;
-    margin-right: 8px;
+    margin: 0 0 6px 0;
 }
 
 .map-tooltip {
@@ -650,26 +598,13 @@
     color: rgb(245, 235, 210);
 }
 
-.legend-note {
-    margin-top: 3px;
-    -unity-font-style: italic;
-}
-
-.card-village {
-    margin-top: 1px;
-}
-
 .minimap {
-    position: absolute;
-    left: 12px;
-    bottom: 71px;
     border-width: 3px;
     border-color: rgb(122, 90, 51);
     border-radius: 4px;
     background-color: rgb(20, 16, 10);
     overflow: hidden;
 }
-
 .minimap-frame {
     position: absolute;
     border-width: 1px;
@@ -684,11 +619,6 @@
 .name-field {
     width: 220px;
     margin: 0;
-}
-
-.legend-entry {
-    flex-direction: row;
-    align-items: center;
 }
 
 .legend-swatch {
@@ -736,13 +666,15 @@
     font-size: 14px;
     -unity-font-style: bold;
     padding: 3px 10px;
-    margin-right: 10px;
+    margin-right: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .incoming-panel {
     position: absolute;
     left: 12px;
-    bottom: 69px;
+    bottom: 12px;
     max-height: 170px;
     background-color: rgba(241, 227, 195, 0.95);
     border-width: 2px;
@@ -775,24 +707,6 @@
 
 .incoming-time {
     color: rgb(150, 30, 20);
-}
-
-.protection-tag {
-    position: absolute;
-    left: 14px;
-    background-color: rgba(90, 140, 200, 0.35);
-    border-width: 1px;
-    border-color: rgb(140, 180, 230);
-    border-radius: 5px;
-    color: rgb(225, 238, 255);
-    font-size: 13px;
-    -unity-font-style: bold;
-    padding: 3px 9px;
-}
-
-.protection-text {
-    color: rgb(40, 80, 140);
-    -unity-font-style: bold;
 }
 
 .option-label {
@@ -982,8 +896,13 @@
     flex-direction: row;
 }
 
+/* Every cell exactly the same width with no margins (labels get theme margins otherwise), so the numbers sit
+   right under their unit's icon. */
 .troop-cell {
     width: 62px;
+    min-width: 62px;
+    flex-shrink: 0;
+    margin: 0;
     font-size: 13px;
     color: rgb(58, 42, 24);
     -unity-text-align: middle-center;
@@ -998,12 +917,48 @@
     font-size: 12px;
     -unity-font-style: bold;
     color: rgb(92, 52, 20);
+    align-items: center;
+    justify-content: center;
 }
 
 .troop-label {
     width: 60px;
+    min-width: 60px;
     -unity-font-style: bold;
     -unity-text-align: middle-left;
+}
+
+/* Loot: each resource's icon and amount, then carried / could carry. */
+.loot-line {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.loot-label {
+    margin-right: 6px;
+}
+
+.loot-icon {
+    margin: 0 3px 0 8px;
+}
+
+.loot-value {
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(60, 95, 35);
+    margin: 0;
+}
+
+.loot-line--lost .loot-value {
+    color: rgb(150, 40, 25);
+}
+
+.loot-total {
+    font-size: 13px;
+    color: rgb(110, 84, 54);
+    margin-left: 16px;
 }
 
 .toast {
@@ -1022,5 +977,515 @@
     padding: 8px 16px;
     color: rgb(58, 42, 24);
     font-size: 16px;
+    -unity-font-style: bold;
+}
+
+/* ---------------------------------------------------------------- the village view's pane (Tribal Wars style) */
+
+.icon {
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.village-pane {
+    position: absolute;
+    right: 0;
+    top: 55px;
+    bottom: 0;
+    padding: 10px 10px;
+    background-color: rgba(241, 227, 195, 0.97);
+    border-left-width: 3px;
+    border-color: rgb(122, 90, 51);
+}
+
+.pane-box {
+    background-color: rgb(250, 240, 214);
+    border-width: 1px;
+    border-color: rgb(160, 126, 82);
+    margin-bottom: 10px;
+}
+
+.pane-title {
+    background-color: rgb(196, 163, 108);
+    color: rgb(60, 36, 14);
+    font-size: 14px;
+    -unity-font-style: bold;
+    padding: 3px 8px;
+}
+
+.pane-line {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 8px;
+    border-bottom-width: 1px;
+    border-color: rgba(160, 126, 82, 0.3);
+}
+
+.pane-icon {
+    margin-right: 6px;
+}
+
+.pane-name {
+    font-size: 13px;
+    color: rgb(58, 42, 24);
+    flex-grow: 1;
+}
+
+.pane-value {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(58, 42, 24);
+}
+
+.pane-count {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(58, 42, 24);
+    margin-right: 5px;
+}
+
+.pane-links {
+    flex-direction: row;
+    padding: 2px 4px;
+}
+
+.pane-link {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    color: rgb(125, 60, 20);
+    font-size: 13px;
+    -unity-font-style: bold;
+    padding: 2px 4px;
+    margin: 0;
+}
+
+.pane-link {
+    border-bottom-width: 1px;
+    border-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+}
+
+
+
+/* ---------------------------------------------------------------- building screens */
+
+.window {
+    width: 860px;
+    height: 88%;
+    align-items: stretch;
+    padding: 12px 16px;
+}
+
+.window-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.window-title {
+    font-size: 22px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+.window-description {
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.window-body {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.window-section {
+    padding-right: 6px;
+}
+
+.cost-line {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.cost-icon {
+    margin: 0 3px 0 8px;
+}
+
+.cost-value {
+    font-size: 12px;
+    color: rgb(58, 42, 24);
+}
+
+.cost-time {
+    font-size: 12px;
+    color: rgb(110, 84, 54);
+    margin-left: 10px;
+}
+
+.upgrade-box {
+    align-items: flex-end;
+    min-width: 330px;
+}
+
+.hq-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hq-row-name {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-right: 10px;
+}
+
+.rename-row {
+    flex-direction: row;
+    justify-content: flex-start;
+    margin: 4px 0 8px 0;
+}
+
+.rename-field {
+    width: 280px;
+    margin: 0 8px;
+}
+
+.queue-list {
+    margin-bottom: 6px;
+}
+
+.link-btn {
+    align-self: flex-start;
+    margin-top: 10px;
+}
+
+.unit-header {
+    flex-direction: row;
+    align-items: center;
+}
+
+.unit-icon {
+    margin-right: 8px;
+}
+
+.unit-names {
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 1;
+    justify-content: space-between;
+}
+
+.troop-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.troop-grid-cell {
+    flex-direction: row;
+    align-items: center;
+    width: 90px;
+    padding: 3px 4px;
+}
+
+.troop-grid-cell .garrison-count {
+    margin-left: 6px;
+}
+
+.send-to-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.coord-field {
+    width: 70px;
+    margin: 0 4px;
+}
+
+.send-to-row > .row-title {
+    margin-right: 6px;
+}
+
+/* The market: amounts to send, and the offer form. */
+.amount-field {
+    width: 80px;
+    margin: 0 8px 0 2px;
+}
+
+.resource-choice {
+    width: 80px;
+    margin: 0 8px 0 2px;
+}
+
+.offer-row {
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.offer-row > .coord-field {
+    width: 64px;
+}
+/* ---------------------------------------------------------------- links, village and player windows */
+
+/* A player's or village's name that opens its window: text that looks like a link. */
+.link {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-bottom-width: 1px;
+    border-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+    padding: 0 2px;
+    margin: 0 3px;
+    min-width: 0;
+    height: auto;
+    color: rgb(125, 60, 20);
+    font-size: 13px;
+    -unity-font-style: bold;
+}
+
+/* Under the pointer a name or link turns a few shades darker and underlines: no box behind it, and no bold.
+   (Specific enough to win over the theme's grey hover and press styles for buttons.) */
+.link.unity-button:hover:enabled,
+.link.unity-button:active:enabled,
+.top-link.unity-button:hover:enabled,
+.top-link.unity-button:active:enabled,
+.pane-link.unity-button:hover:enabled,
+.pane-link.unity-button:active:enabled {
+    background-color: rgba(0, 0, 0, 0);
+    border-left-color: rgba(0, 0, 0, 0);
+    border-right-color: rgba(0, 0, 0, 0);
+    border-top-color: rgba(0, 0, 0, 0);
+    color: rgb(80, 36, 10);
+    border-bottom-color: rgb(80, 36, 10);
+}
+
+.link--owner.unity-button:hover:enabled,
+.link--owner.unity-button:active:enabled {
+    color: rgb(20, 46, 92);
+    border-bottom-color: rgb(20, 46, 92);
+}
+
+.top-player.unity-button:hover:enabled,
+.top-player.unity-button:active:enabled {
+    color: rgb(160, 138, 98);
+    border-bottom-color: rgb(160, 138, 98);
+}
+
+.village-name.unity-button:hover:enabled,
+.village-name.unity-button:active:enabled {
+    color: rgb(188, 154, 78);
+    border-bottom-color: rgb(188, 154, 78);
+}
+
+.link.unity-button:focus,
+.top-link.unity-button:focus,
+.pane-link.unity-button:focus {
+    background-color: rgba(0, 0, 0, 0);
+    border-color: rgba(0, 0, 0, 0);
+}
+
+.link:disabled {
+    color: rgb(110, 84, 54);
+}
+
+.link--owner {
+    color: rgb(40, 80, 140);
+}
+
+.link-line {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.link-text {
+    margin-top: 0;
+}
+
+.info-window {
+    position: absolute;
+    right: 12px;
+    top: 64px;
+    width: 420px;
+    max-height: 82%;
+    align-items: stretch;
+    padding: 10px 14px;
+}
+
+.info-actions {
+    justify-content: flex-start;
+    margin: 6px 0 2px 0;
+}
+
+.info-village-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 0;
+    border-bottom-width: 1px;
+    border-color: rgba(122, 90, 51, 0.25);
+}
+
+.protection-note {
+    color: rgb(40, 80, 140);
+    -unity-font-style: bold;
+}
+
+.report-role {
+    margin-right: 2px;
+}
+
+.ranking-link {
+    font-size: 15px;
+}
+
+/* One troop movement in the village view's list or at the rally point. */
+.movement-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 4px;
+    border-top-width: 1px;
+    border-left-width: 4px;
+    border-color: rgba(122, 90, 51, 0.25);
+    border-left-color: rgb(110, 150, 60);
+}
+
+.movement-row--incoming {
+    border-left-color: rgb(170, 45, 30);
+    background-color: rgba(220, 120, 100, 0.25);
+}
+
+.movement-row--return {
+    border-left-color: rgb(120, 110, 90);
+}
+
+.movement-kind {
+    font-size: 12px;
+    color: rgb(58, 42, 24);
+}
+
+.movement-row--incoming .movement-kind {
+    color: rgb(150, 30, 20);
+    -unity-font-style: bold;
+}
+
+.movement-target {
+    margin: 0 4px 0 2px;
+}
+
+.movement-countdown {
+    font-size: 13px;
+    margin-left: 10px;
+}
+
+.movement-row--incoming .movement-countdown {
+    color: rgb(150, 30, 20);
+}
+.send-icon {
+    margin-right: 6px;
+}
+
+/* The ranking's page controls, and a row brought into view from a player's profile. */
+.ranking-pager {
+    justify-content: flex-start;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.ranking-page {
+    margin: 0 10px;
+}
+
+.ranking-row--focus {
+    background-color: rgba(140, 180, 230, 0.45);
+    border-radius: 4px;
+}
+
+/* A continent's number (K55) written faintly over the middle of its block on the map. */
+.continent-label {
+    position: absolute;
+    translate: -50% -50%;
+    font-size: 30px;
+    -unity-font-style: bold;
+    color: rgba(255, 255, 255, 0.35);
+    -unity-text-outline-width: 1px;
+    -unity-text-outline-color: rgba(0, 0, 0, 0.35);
+}
+
+/* ---------------------------------------------------------------- villages overview */
+
+.overview {
+    justify-content: center;
+}
+
+.overview-column {
+    flex-grow: 1;
+    max-width: 1200px;
+}
+
+.overview-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom-width: 1px;
+    border-color: rgba(122, 90, 51, 0.25);
+}
+
+.overview-cell {
+    font-size: 13px;
+    color: rgb(58, 42, 24);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.overview-name {
+    width: 210px;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    overflow: hidden;
+}
+
+.overview-number {
+    width: 78px;
+    flex-shrink: 0;
+    -unity-text-align: middle-right;
+    padding-right: 6px;
+}
+
+.overview-icon-cell {
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.overview-building {
+    width: 170px;
+    flex-shrink: 0;
+    padding-left: 10px;
+}
+
+.overview-troops {
+    flex-grow: 1;
+    flex-shrink: 1;
+    padding-left: 6px;
+}
+
+.overview-incoming {
+    width: 70px;
+    flex-shrink: 0;
+    -unity-text-align: middle-center;
+}
+
+.overview-full {
+    color: rgb(170, 45, 30);
+    -unity-font-style: bold;
+}
+
+.overview-attacked {
+    color: rgb(255, 235, 215);
+    background-color: rgb(150, 35, 22);
+    border-radius: 4px;
     -unity-font-style: bold;
 }

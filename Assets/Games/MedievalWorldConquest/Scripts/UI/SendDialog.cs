@@ -44,10 +44,11 @@ namespace MedievalWorldConquest
             nothingHome = Text("You have no troops at home to send.", "row-reason");
             panel.Add(nothingHome);
 
-            foreach (var u in Units.Definitions)
+            foreach (var type in Units.InDisplayOrder)
             {
-                var type = u.Type;
+                var u = Units.Get(type);
                 var row = Element("send-row");
+                row.Add(Icons.Element(Icons.Unit(type), 20, "send-icon"));
                 row.Add(Text(u.Name, "row-title", "send-name"));
                 available[(int)type] = Text("", "row-level", "send-available");
                 row.Add(available[(int)type]);
@@ -67,7 +68,7 @@ namespace MedievalWorldConquest
             catapultRow.Add(Text("Catapults aim at", "row-title", "send-name"));
             var names = new List<string>();
             foreach (var d in Buildings.Definitions) names.Add(d.Name);
-            catapultTarget = new DropdownField(names, (int)BuildingType.TownHall);
+            catapultTarget = new DropdownField(names, (int)BuildingType.Headquarters);
             catapultTarget.AddToClassList("catapult-target");
             catapultRow.Add(catapultTarget);
             panel.Add(catapultRow);

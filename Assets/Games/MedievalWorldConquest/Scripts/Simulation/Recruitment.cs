@@ -8,6 +8,10 @@ namespace MedievalWorldConquest.Simulation
         Ok,
         InvalidCount,
         NeedsBuilding,
+        /// <summary>The unit hasn't been researched at the smithy yet.</summary>
+        NeedsResearch,
+        /// <summary>On a gold-coin world: no free noble slot for another nobleman. Mint more coins.</summary>
+        NeedsCoins,
         QueueFull,
         FarmTooSmall,
         NotEnoughResources,
@@ -39,15 +43,16 @@ namespace MedievalWorldConquest.Simulation
         public static Cost Multiply(Cost each, int count) =>
             new Cost(each.Wood * count, each.Clay * count, each.Iron * count, each.Population * count);
 
-        /// <summary>The most of a unit the village can afford right now, by resources and by free population.</summary>
-        public static int MaxAffordable(Village v, UnitType unit)
+        /// <summary>The most of a unit the village can afford right now, by resources and by free population (and, for noblemen on a coin world, by free noble slots).</summary>
+        public int MaxAffordable(Village v, UnitType unit)
         {
-            var c = Units.Get(unit).Cost;
+            var c = UnitCost(unit);
             long max = int.MaxValue;
             if (c.Wood > 0) max = Math.Min(max, (long)(v.Wood / c.Wood));
             if (c.Clay > 0) max = Math.Min(max, (long)(v.Clay / c.Clay));
             if (c.Iron > 0) max = Math.Min(max, (long)(v.Iron / c.Iron));
             if (c.Population > 0) max = Math.Min(max, v.FreePopulation / c.Population);
+            if (unit == UnitType.Nobleman) max = Math.Min(max, FreeNobleSlots(FindPlayer(v.OwnerId)));
             return (int)Math.Max(0, max);
         }
 
@@ -67,7 +72,7 @@ namespace MedievalWorldConquest.Simulation
             var check = new RecruitCheck
             {
                 Count = count,
-                Total = Multiply(def.Cost, Math.Max(0, count)),
+                Total = Multiply(UnitCost(unit), Math.Max(0, count)),
                 SecondsEach = Units.SecondsToTrain(unit, buildingLevel),
                 MaxAffordable = MaxAffordable(v, unit),
             };
@@ -78,6 +83,8 @@ namespace MedievalWorldConquest.Simulation
                 check.Status = RecruitStatus.NeedsBuilding;
                 check.Required = new Requirement(def.Building, def.RequiredLevel);
             }
+            else if (!v.IsResearched(unit)) check.Status = RecruitStatus.NeedsResearch;
+            else if (unit == UnitType.Nobleman && count > FreeNobleSlots(FindPlayer(v.OwnerId))) check.Status = RecruitStatus.NeedsCoins;
             else if (count <= 0) check.Status = RecruitStatus.InvalidCount;
             else if (QueuedBatches(v, def.Building) >= MaxRecruitQueue) check.Status = RecruitStatus.QueueFull;
             else if (check.Total.Population > v.FreePopulation) check.Status = RecruitStatus.FarmTooSmall;
@@ -110,7 +117,7 @@ namespace MedievalWorldConquest.Simulation
                 Total = count,
                 SecondsEach = check.SecondsEach,
             });
-            StartNextRecruit(v, building);
+            StartNextRecruit(v, building, Now);
             return check;
         }
 
@@ -126,12 +133,11 @@ namespace MedievalWorldConquest.Simulation
             var order = v.Recruitment[index];
             v.Recruitment.RemoveAt(index);
 
-            var refund = Multiply(Units.Get(order.Unit).Cost, order.Remaining);
+            var refund = Multiply(UnitCost(order.Unit), order.Remaining);
             v.Wood += refund.Wood;
             v.Clay += refund.Clay;
             v.Iron += refund.Iron;
-            // Its next-unit event, if any, is now stale and will be ignored.
-            if (order.Started) StartNextRecruit(v, order.Building);
+            if (order.Started) StartNextRecruit(v, order.Building, Now);
             return true;
         }
 
@@ -139,32 +145,54 @@ namespace MedievalWorldConquest.Simulation
         public static RecruitOrder ActiveRecruit(Village v, BuildingType building) =>
             v.Recruitment.Find(o => o.Building == building);
 
-        void StartNextRecruit(Village v, BuildingType building)
+        /// <summary>Sets a building's next batch (if it isn't already under way) training from time <paramref name="from"/>.</summary>
+        void StartNextRecruit(Village v, BuildingType building, double from)
         {
             var order = ActiveRecruit(v, building);
             if (order == null || order.Started) return;
-            order.NextAt = Now + order.SecondsEach;
-            Schedule(order.SecondsEach, EventKind.UnitTrained, v.Id, order.Id);
+            order.NextAt = from + order.SecondsEach;
         }
 
+        /// <summary>
+        /// Adds to the garrison every unit whose training has finished by now, moving each building on to its
+        /// next batch as one finishes. Units are worked out when they're needed (see <see cref="Touch"/>) rather
+        /// than with an event apiece, which keeps big worlds fast; the result is the same.
+        /// </summary>
+        void CatchUpRecruitment(Village v)
+        {
+            if (v.Recruitment == null || v.Recruitment.Count == 0) return;
+            bool moved = true;
+            while (moved)
+            {
+                moved = false;
+                for (int i = 0; i < v.Recruitment.Count; i++)
+                {
+                    var o = v.Recruitment[i];
+                    if (!o.Started || o.NextAt > Now) continue;
+                    // (A hair of tolerance, so a unit due exactly now isn't lost to rounding.)
+                    int done = Math.Min(o.Remaining, 1 + (int)Math.Floor((Now - o.NextAt) / o.SecondsEach + 1e-9));
+                    double lastFinished = o.NextAt + (done - 1) * o.SecondsEach;
+                    o.Done += done;
+                    v.Troops[(int)o.Unit] += done;
+                    if (o.Remaining > 0)
+                    {
+                        o.NextAt = lastFinished + o.SecondsEach;
+                        continue;
+                    }
+                    // The batch is done: the building starts its next one from the moment this one finished.
+                    v.Recruitment.RemoveAt(i);
+                    StartNextRecruit(v, o.Building, lastFinished);
+                    moved = true;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>A unit-trained event from a save made before training was worked out lazily: just catch up.</summary>
         void TrainUnit(ScheduledEvent e)
         {
             var v = FindVillage(e.VillageId);
-            var order = v?.Recruitment.Find(o => o.Id == e.A);
-            if (order == null) return; // cancelled: stale event
-
-            order.Done++;
-            v.Troops[(int)order.Unit]++;
-            if (order.Remaining > 0)
-            {
-                order.NextAt = Now + order.SecondsEach;
-                Schedule(order.SecondsEach, EventKind.UnitTrained, v.Id, order.Id);
-            }
-            else
-            {
-                v.Recruitment.Remove(order);
-                StartNextRecruit(v, order.Building);
-            }
+            if (v != null) Touch(v);
         }
     }
 }

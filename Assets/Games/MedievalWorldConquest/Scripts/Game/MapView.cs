@@ -16,6 +16,8 @@ namespace MedievalWorldConquest
 
         // Tribal Wars' map colours: your villages yellow, barbarians grey, everyone else in their own colours.
         public static readonly Color PlayerColor = new Color(1f, 0.86f, 0.12f);
+        /// <summary>The village the player is viewing from: white, as in Tribal Wars (their other villages are yellow).</summary>
+        public static readonly Color CurrentVillageColor = Color.white;
         public static readonly Color BarbarianColor = new Color(0.62f, 0.62f, 0.62f);
 
         /// <summary>Each rival lord's colour (by <see cref="Player.ColorIndex"/>): none of them yellow or grey.</summary>
@@ -49,12 +51,14 @@ namespace MedievalWorldConquest
             if (v.IsBarbarian) return BarbarianColor;
             var owner = world.FindPlayer(v.OwnerId);
             if (owner == null) return BarbarianColor;
-            return owner.IsHuman ? PlayerColor : RivalColors[owner.ColorIndex % RivalColors.Length];
+            if (owner.IsHuman) return v == world.PlayerVillage ? CurrentVillageColor : PlayerColor;
+            return RivalColors[owner.ColorIndex % RivalColors.Length];
         }
 
         SpriteRenderer terrain, selection, homeGlow;
         readonly Dictionary<int, SpriteRenderer> markers = new Dictionary<int, SpriteRenderer>();
-        readonly Dictionary<int, int> markerPoints = new Dictionary<int, int>();
+        /// <summary>Which picture each village's marker shows (tier × 2, plus 1 if barbarian).</summary>
+        readonly Dictionary<int, int> markerKeys = new Dictionary<int, int>();
         float refreshTimer;
 
         public static MapView Create(World world)
@@ -64,12 +68,28 @@ namespace MedievalWorldConquest
             return view;
         }
 
-        public static Vector2 FieldCentre(int x, int y) => Origin + new Vector2(x + 0.5f, y + 0.5f);
+        /// <summary>
+        /// A field's width in scene units (its height is 1): fields are wider than tall, 53 by 38 like the tiles of
+        /// Tribal Wars' map. Distances in the game are still counted in fields.
+        /// </summary>
+        public const float FieldWidth = 53f / 38f;
+
+        /// <summary>Thin grid lines every this many fields, and heavier ones round each block of this many.</summary>
+        public const int SectorSize = 5, BlockSize = 25;
+
+        public static Vector2 FieldCentre(int x, int y) => Origin + new Vector2((x + 0.5f) * FieldWidth, y + 0.5f);
+
+        /// <summary>A scene position in map fields (fractional; may be off the map).</summary>
+        public static Vector2 ToFields(Vector2 scenePosition) =>
+            new Vector2((scenePosition.x - Origin.x) / FieldWidth, scenePosition.y - Origin.y);
+
+        /// <summary>A point in map fields as a scene position.</summary>
+        public static Vector2 FromFields(Vector2 fields) => Origin + new Vector2(fields.x * FieldWidth, fields.y);
 
         /// <summary>The map field under a scene position (may be off the map).</summary>
         public static Vector2Int FieldAt(Vector2 scenePosition)
         {
-            var p = scenePosition - Origin;
+            var p = ToFields(scenePosition);
             return new Vector2Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y));
         }
 
@@ -77,15 +97,18 @@ namespace MedievalWorldConquest
         {
             terrain = AddSprite("Terrain", MakeTerrainSprite(world.Settings.Seed), -200);
             terrain.transform.position = Origin;
+            terrain.transform.localScale = new Vector3(FieldWidth, 1f, 1f); // drawn square, stretched to wide fields
 
             homeGlow = AddSprite("Home", VillageArt.Glow, -150);
             homeGlow.color = new Color(1f, 1f, 1f, 0.55f);
-            homeGlow.transform.localScale = Vector3.one * 2.6f;
+            homeGlow.transform.localScale = new Vector3(2.6f * FieldWidth, 2.6f, 1f);
 
             selection = AddSprite("Selection", VillageArt.Glow, -140);
             selection.color = new Color(1f, 1f, 1f, 0.9f);
-            selection.transform.localScale = Vector3.one * 2f;
+            selection.transform.localScale = new Vector3(2f * FieldWidth, 2f, 1f);
             selection.enabled = false;
+
+            BuildGrid();
 
             Refresh(world, force: true);
         }
@@ -105,32 +128,59 @@ namespace MedievalWorldConquest
         public void Refresh(World world, bool force = false, float dt = 0f)
         {
             refreshTimer -= dt;
-            if (!force && refreshTimer > 0f) return;
+            // (At once, not at the next half-second, when the player switches villages: the colours change.)
+            int current = world.PlayerVillage?.Id ?? -1;
+            if (!force && refreshTimer > 0f && current == shownCurrent) return;
             refreshTimer = 0.5f;
+            shownCurrent = current;
 
             var human = world.HumanPlayer;
             foreach (var v in world.Villages)
             {
                 if (!markers.TryGetValue(v.Id, out var marker))
                 {
-                    // In front of the terrain and glows; lower markers overlap the ones above them.
-                    marker = AddSprite("Village", VillageArt.MapVillage(0), 10 + World.MapSize - v.Y);
-                    marker.transform.position = FieldCentre(v.X, v.Y);
-                    marker.transform.localScale = Vector3.one * 0.96f; // a field each, so neighbours don't overlap
+                    // In front of the terrain and glows; lower villages overlap the ones above them. Each village has
+                    // three layers: the outline marking the player's own, the picture, and the owner's dot.
+                    int order = (10 + World.MapSize - v.Y) * 3;
+                    var centre = FieldCentre(v.X, v.Y);
+                    marker = AddSprite("Village", VillageArt.MapVillage(0, false), order + 1);
+                    marker.transform.position = centre;
+                    // A field each (a little wider than tall, like the fields), so neighbours don't overlap.
+                    marker.transform.localScale = new Vector3(1.15f, 0.96f, 1f);
                     markers[v.Id] = marker;
-                    markerPoints[v.Id] = -1;
+                    markerKeys[v.Id] = -1;
+
+                    var dot = AddSprite("Owner", VillageArt.MapDot, order + 2);
+                    dot.transform.position = centre + new Vector2(-0.38f * FieldWidth, 0.36f);
+                    dot.transform.localScale = Vector3.one * 0.28f;
+                    dots[v.Id] = dot;
+
+                    var ring = AddSprite("Own village", VillageArt.MapRing, order);
+                    ring.transform.position = centre;
+                    ring.transform.localScale = new Vector3(0.97f * FieldWidth, 0.97f, 1f);
+                    rings[v.Id] = ring;
                 }
+
+                // As on Tribal Wars' map: villages in full colour by size, barbarians grey, and a dot in the corner in
+                // the owner's colour. Yours are outlined too: yellow, and white for the one you're viewing from.
                 bool mine = human != null && v.OwnerId == human.Id;
-                marker.color = OwnerColor(world, v);
-                int points = v.Points;
-                if (markerPoints[v.Id] != points)
+                int key = TierOf(v.Points) * 2 + (v.IsBarbarian ? 1 : 0);
+                if (markerKeys[v.Id] != key)
                 {
-                    markerPoints[v.Id] = points;
-                    marker.sprite = VillageArt.MapVillage(TierOf(points));
+                    markerKeys[v.Id] = key;
+                    marker.sprite = VillageArt.MapVillage(key / 2, v.IsBarbarian);
                 }
+                dots[v.Id].enabled = !v.IsBarbarian;
+                dots[v.Id].color = OwnerColor(world, v);
+                rings[v.Id].enabled = mine;
+                if (mine) rings[v.Id].color = dots[v.Id].color;
                 if (mine && v == world.PlayerVillage) homeGlow.transform.position = FieldCentre(v.X, v.Y);
             }
         }
+
+        readonly Dictionary<int, SpriteRenderer> dots = new Dictionary<int, SpriteRenderer>();
+        int shownCurrent = -1;
+        readonly Dictionary<int, SpriteRenderer> rings = new Dictionary<int, SpriteRenderer>();
 
         public void Select(Village v)
         {
@@ -138,13 +188,102 @@ namespace MedievalWorldConquest
             if (v != null) selection.transform.position = FieldCentre(v.X, v.Y);
         }
 
+        // ---------------------------------------------------------------- grid lines
+
+        /// <summary>
+        /// One tier of grid lines: every <see cref="Step"/> fields, a line <see cref="Pixels"/> screen pixels thick in
+        /// <see cref="Color"/>, fully shown when zoomed in to <see cref="FullUntil"/> (the camera's half-height in
+        /// fields) and faded away by <see cref="GoneAt"/>.
+        /// </summary>
+        class GridTier
+        {
+            public int Step;
+            public float Pixels, FullUntil, GoneAt;
+            public Color Color;
+            public readonly List<SpriteRenderer> Vertical = new List<SpriteRenderer>(), Horizontal = new List<SpriteRenderer>();
+        }
+
+        // As on Tribal Wars' map: zoomed right in, a faint line round every field; further out only the 5 x 5
+        // sectors; further still only the 25 x 25 blocks, which always show.
+        readonly GridTier[] grid =
+        {
+            new GridTier { Step = 1, Pixels = 1, FullUntil = 6, GoneAt = 9, Color = new Color(0f, 0f, 0f, 0.12f) },
+            new GridTier { Step = SectorSize, Pixels = 1, FullUntil = 28, GoneAt = 42, Color = new Color(0.05f, 0.08f, 0.02f, 0.35f) },
+            new GridTier { Step = BlockSize, Pixels = 2, FullUntil = float.MaxValue, GoneAt = float.MaxValue, Color = new Color(0.05f, 0.06f, 0.02f, 0.6f) },
+        };
+        float gridZoom = -1, gridPixelSize = -1;
+
+        /// <summary>
+        /// Lays out every grid line as a thin sprite over the terrain. A line that a coarser tier also draws is left
+        /// to that tier, so no line is drawn twice.
+        /// </summary>
+        void BuildGrid()
+        {
+            float width = World.MapSize * FieldWidth;
+            for (int t = 0; t < grid.Length; t++)
+            {
+                var tier = grid[t];
+                int coarser = t + 1 < grid.Length ? grid[t + 1].Step : int.MaxValue;
+                for (int i = 0; i <= World.MapSize; i += tier.Step)
+                {
+                    if (i % coarser == 0 && coarser != int.MaxValue) continue;
+                    var v = AddSprite("Grid", VillageArt.Pixel, -190 + t);
+                    v.color = tier.Color;
+                    v.transform.position = Origin + new Vector2(i * FieldWidth, World.MapSize / 2f);
+                    tier.Vertical.Add(v);
+                    var h = AddSprite("Grid", VillageArt.Pixel, -190 + t);
+                    h.color = tier.Color;
+                    h.transform.position = Origin + new Vector2(width / 2f, i);
+                    tier.Horizontal.Add(h);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Shows the grid for the current zoom: finer tiers fade out as the view pulls back, and every line stays the
+        /// same number of screen pixels thick whatever the zoom.
+        /// </summary>
+        /// <param name="zoom">The camera's orthographic size (half the fields visible top to bottom).</param>
+        /// <param name="screenHeight">The screen's height in pixels.</param>
+        public void ShowGrid(float zoom, int screenHeight)
+        {
+            float pixel = 2f * zoom / Mathf.Max(1, screenHeight); // one screen pixel, in scene units
+            if (Mathf.Approximately(zoom, gridZoom) && Mathf.Approximately(pixel, gridPixelSize)) return;
+            gridZoom = zoom;
+            gridPixelSize = pixel;
+
+            float width = World.MapSize * FieldWidth;
+            foreach (var tier in grid)
+            {
+                float fade = tier.GoneAt == float.MaxValue ? 1f : 1f - Mathf.InverseLerp(tier.FullUntil, tier.GoneAt, zoom);
+                bool visible = fade > 0.01f;
+                var color = new Color(tier.Color.r, tier.Color.g, tier.Color.b, tier.Color.a * fade);
+                float thickness = tier.Pixels * pixel;
+                foreach (var v in tier.Vertical)
+                {
+                    v.enabled = visible;
+                    if (!visible) continue;
+                    v.color = color;
+                    v.transform.localScale = new Vector3(thickness, World.MapSize, 1f);
+                }
+                foreach (var h in tier.Horizontal)
+                {
+                    h.enabled = visible;
+                    if (!visible) continue;
+                    h.color = color;
+                    h.transform.localScale = new Vector3(width, thickness, 1f);
+                }
+            }
+        }
+
         /// <summary>The village nearest a scene position, if one is within <paramref name="radius"/> fields.</summary>
         public static Village VillageNear(World world, Vector2 scenePosition, float radius)
         {
             Village best = null;
             float bestDistance = radius;
-            var p = scenePosition - Origin;
-            foreach (var v in world.Villages)
+            var p = ToFields(scenePosition);
+            // Only the villages round about (the world holds a couple of thousand).
+            foreach (var v in world.VillagesNear(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), radius + 1.5f))
             {
                 float d = Vector2.Distance(p, new Vector2(v.X + 0.5f, v.Y + 0.5f));
                 if (d <= bestDistance)
@@ -199,8 +338,8 @@ namespace MedievalWorldConquest
                             c = Meadow * (0.9f + 0.2f * detail);
                             break;
                     }
-                    // Faint lines every 10 fields, and a dark border round the world.
-                    if (x % (PixelsPerField * 10) == 0 || y % (PixelsPerField * 10) == 0) c *= 0.82f;
+                    // A dark border round the world. (The grid lines are drawn separately, so they can change with
+                    // the zoom: see ShowGrid.)
                     if (x < 2 || y < 2 || x >= size - 2 || y >= size - 2) c = new Color(0.15f, 0.12f, 0.08f);
                     c.a = 1f;
                     px[y * size + x] = c;

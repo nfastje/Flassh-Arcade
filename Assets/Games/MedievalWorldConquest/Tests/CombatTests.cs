@@ -316,16 +316,16 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void CatapultsCantRazeTheTownHall()
+        public void CatapultsCantRazeTheHeadquarters()
         {
             var world = WarWorld(out var home, out var target);
-            target.Levels[(int)BuildingType.TownHall] = 3;
+            target.Levels[(int)BuildingType.Headquarters] = 3;
             home.Troops[(int)UnitType.Catapult] = 200;
-            var command = world.Send(home, target, Army((UnitType.Axeman, 200), (UnitType.Catapult, 200)), CommandKind.Attack, BuildingType.TownHall);
+            var command = world.Send(home, target, Army((UnitType.Axeman, 200), (UnitType.Catapult, 200)), CommandKind.Attack, BuildingType.Headquarters);
 
             world.AdvanceTo(command.ArriveTime);
 
-            Assert.AreEqual(1, target.Level(BuildingType.TownHall));
+            Assert.AreEqual(1, target.Level(BuildingType.Headquarters));
         }
 
         [Test]
@@ -424,6 +424,26 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(ReportKind.Defense, report.Kind);
             Assert.IsTrue(report.PlayerWon, "300 axemen, 100 light cavalry and villagers beat 10 axemen");
             Assert.IsTrue(report.DefenderVisible);
+        }
+
+        [Test]
+        public void ReportsTellWhatIsKnownAboutAVillage()
+        {
+            var world = WarWorld(out var home, out var target);
+            Assert.IsNull(world.LatestScouting(target.Id), "nothing known yet");
+
+            var scouts = world.Send(home, target, Army((UnitType.Scout, 3)), CommandKind.Attack);
+            world.AdvanceTo(scouts.ArriveTime);
+            var raid = world.Send(home, target, Army((UnitType.Axeman, 50)), CommandKind.Attack);
+            world.AdvanceTo(raid.ArriveTime);
+
+            var about = world.ReportsAbout(target.Id);
+            Assert.AreEqual(2, about.Count);
+            Assert.GreaterOrEqual(about[0].Time, about[1].Time, "newest first");
+            Assert.AreEqual(scouts.ArriveTime, world.LatestScouting(target.Id).Time, 1e-6, "the scouting run saw the buildings");
+            Assert.AreEqual(raid.ArriveTime, world.LatestSighting(target.Id).Time, 1e-6, "the raid saw the defenders last");
+            Assert.AreEqual(home.OwnerId, about[0].AttackerPlayerId);
+            Assert.AreEqual(-1, about[0].DefenderPlayerId, "barbarians");
         }
 
         [Test]

@@ -11,6 +11,8 @@ namespace MedievalWorldConquest.Simulation
         Defense = 1,
         /// <summary>The player's support troops arrived at their destination.</summary>
         SupportArrived = 2,
+        /// <summary>Merchants delivered resources to one of the player's villages, or delivered the player's.</summary>
+        ResourcesArrived = 3,
     }
 
     /// <summary>
@@ -27,8 +29,9 @@ namespace MedievalWorldConquest.Simulation
 
         public int AttackerVillageId, DefenderVillageId;
         public string AttackerVillage, DefenderVillage;
-        /// <summary>The villages' owners at the time ("Barbarians" for a barbarian village).</summary>
+        /// <summary>The villages' owners at the time ("Barbarians" for a barbarian village), and their ids (-1: barbarians, or unknown).</summary>
         public string AttackerPlayer, DefenderPlayer;
+        public int AttackerPlayerId = -1, DefenderPlayerId = -1;
         public int AttackerX, AttackerY, DefenderX, DefenderY;
 
         public bool AttackerWon;
@@ -49,6 +52,11 @@ namespace MedievalWorldConquest.Simulation
         public Cost Loot;
         public int LootCapacity;
 
+        /// <summary>The village's loyalty before and after surviving noblemen swayed it (-1: no noblemen got through).</summary>
+        public int LoyaltyBefore = -1, LoyaltyAfter = -1;
+        /// <summary>Whether the attack won the village over.</summary>
+        public bool Conquered;
+
         /// <summary>What scouts saw, if they got through: resources left and building levels.</summary>
         public bool Scouted;
         public Cost ScoutedResources;
@@ -58,7 +66,7 @@ namespace MedievalWorldConquest.Simulation
         public BattleReport Clone() => (BattleReport)MemberwiseClone();
 
         /// <summary>Whether the player came out on top.</summary>
-        public bool PlayerWon => Kind == ReportKind.Defense ? !AttackerWon : Kind == ReportKind.SupportArrived || AttackerWon;
+        public bool PlayerWon => Kind == ReportKind.Defense ? !AttackerWon : Kind == ReportKind.SupportArrived || Kind == ReportKind.ResourcesArrived || AttackerWon;
     }
 
     /// <summary>The player's battle reports.</summary>
@@ -81,6 +89,34 @@ namespace MedievalWorldConquest.Simulation
         }
 
         public BattleReport FindReport(int id) => Reports.Find(r => r.Id == id);
+
+        /// <summary>Every report that involves a village (on either side), newest first.</summary>
+        public List<BattleReport> ReportsAbout(int villageId)
+        {
+            var list = Reports.FindAll(r => (r.Kind == ReportKind.Attack || r.Kind == ReportKind.Defense) && (r.AttackerVillageId == villageId || r.DefenderVillageId == villageId));
+            list.Sort((a, b) => b.Time.CompareTo(a.Time));
+            return list;
+        }
+
+        /// <summary>The newest report in which scouts saw a village's buildings and stores, if any.</summary>
+        public BattleReport LatestScouting(int villageId)
+        {
+            BattleReport best = null;
+            foreach (var r in Reports)
+                if (r.DefenderVillageId == villageId && r.Scouted && r.ScoutedLevels != null && r.ScoutedLevels.Length > 0 && (best == null || r.Time > best.Time))
+                    best = r;
+            return best;
+        }
+
+        /// <summary>The newest report that saw a village's defenders (a battle there with survivors or scouts), if any.</summary>
+        public BattleReport LatestSighting(int villageId)
+        {
+            BattleReport best = null;
+            foreach (var r in Reports)
+                if (r.DefenderVillageId == villageId && r.DefenderVisible && r.DefenderTroops != null && r.DefenderTroops.Length > 0 && (best == null || r.Time > best.Time))
+                    best = r;
+            return best;
+        }
 
         public void MarkAllReportsRead()
         {

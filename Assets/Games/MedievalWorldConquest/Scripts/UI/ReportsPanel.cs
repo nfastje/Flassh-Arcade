@@ -8,20 +8,20 @@ namespace MedievalWorldConquest
     /// <summary>The Reports tab: the player's battle reports on the left, the chosen one in full on the right.</summary>
     public class ReportsPanel
     {
-        static readonly string[] ShortNames = { "Spear", "Sword", "Axe", "Archer", "Scout", "L. Cav", "H. Cav", "Ram", "Catap." };
-
         public VisualElement Root { get; }
 
         readonly MedievalWorldConquestGame game;
+        readonly UiLinks links;
         readonly ScrollView list;
         readonly ScrollView detail;
         readonly Label empty;
         int? selectedId;
         string listSignature;
 
-        public ReportsPanel(MedievalWorldConquestGame game)
+        public ReportsPanel(MedievalWorldConquestGame game, UiLinks links)
         {
             this.game = game;
+            this.links = links;
             Root = Element("army", "reports");
 
             var left = Element("reports-list-column");
@@ -47,13 +47,24 @@ namespace MedievalWorldConquest
 
         public static string Title(BattleReport r) => r.Kind switch
         {
+            ReportKind.Attack when r.Conquered => $"Conquered: {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY}) is yours!",
+            ReportKind.Defense when r.Conquered => $"Village lost: {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY}) fell to {r.AttackerPlayer}",
             ReportKind.Attack => $"{(r.AttackerWon ? "Victory" : "Defeat")}: attack on {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})",
             ReportKind.Defense => $"{(r.AttackerWon ? "Village lost the fight" : "Defended")}: {(string.IsNullOrEmpty(r.AttackerPlayer) ? "attack" : r.AttackerPlayer)} from {r.AttackerVillage} ({r.AttackerX}|{r.AttackerY})",
+            ReportKind.ResourcesArrived => $"Resources delivered to {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})",
             _ => $"Support arrived at {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})",
         };
 
-        /// <summary>"Aldric the Bold, " before a village name (nothing for older reports that didn't record it).</summary>
-        static string Lord(string player) => string.IsNullOrEmpty(player) ? "" : $"{player}, ";
+        /// <summary>"Attacker: [player] [village (x|y)]", the names as links to their windows.</summary>
+        VisualElement Side(string role, string player, int playerId, string village, int villageId, int x, int y)
+        {
+            var line = Element("link-line", "report-side");
+            line.Add(Text($"{role}:", "row-title", "report-role"));
+            if (playerId >= 0 && !string.IsNullOrEmpty(player)) line.Add(Link(player, () => links.OpenPlayer(playerId), "link--owner"));
+            else if (!string.IsNullOrEmpty(player)) line.Add(Text(player, "row-info", "link-text"));
+            line.Add(Link($"{village} ({x}|{y})", () => links.OpenVillage(villageId)));
+            return line;
+        }
 
         public void Refresh(World world)
         {
@@ -81,7 +92,8 @@ namespace MedievalWorldConquest
             else ShowReport(world, selected);
         }
 
-        void Open(int id)
+        /// <summary>Shows one report (e.g. from a village's window).</summary>
+        public void Open(int id)
         {
             selectedId = id;
             game.MarkReportRead(id);
@@ -100,17 +112,34 @@ namespace MedievalWorldConquest
                 return;
             }
 
+            if (r.Kind == ReportKind.ResourcesArrived)
+            {
+                detail.Add(Side("From", r.AttackerPlayer, r.AttackerPlayerId, r.AttackerVillage, r.AttackerVillageId, r.AttackerX, r.AttackerY));
+                detail.Add(Side("To", r.DefenderPlayer, r.DefenderPlayerId, r.DefenderVillage, r.DefenderVillageId, r.DefenderX, r.DefenderY));
+                var goods = LootLine("Delivered:", r.Loot, 0, false);
+                goods.Q<Label>(className: "loot-total")?.RemoveFromHierarchy();
+                detail.Add(goods);
+                detail.Add(Text("Whatever the warehouse couldn't hold was lost.", "row-info"));
+                return;
+            }
+
             detail.Add(Text($"Luck: {(r.Luck >= 0 ? "+" : "")}{r.Luck * 100:0}%", "row-info"));
 
-            detail.Add(Text($"Attacker: {Lord(r.AttackerPlayer)}{r.AttackerVillage} ({r.AttackerX}|{r.AttackerY})", "row-title", "report-side"));
+            detail.Add(Side("Attacker", r.AttackerPlayer, r.AttackerPlayerId, r.AttackerVillage, r.AttackerVillageId, r.AttackerX, r.AttackerY));
             detail.Add(TroopTable(("Sent", r.AttackerSent), ("Lost", r.AttackerLost)));
 
-            detail.Add(Text($"Defender: {Lord(r.DefenderPlayer)}{r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})", "row-title", "report-side"));
+            detail.Add(Side("Defender", r.DefenderPlayer, r.DefenderPlayerId, r.DefenderVillage, r.DefenderVillageId, r.DefenderX, r.DefenderY));
             if (r.DefenderVisible) detail.Add(TroopTable(("Troops", r.DefenderTroops), ("Lost", r.DefenderLost)));
             else detail.Add(Text("None of your troops survived to see the defenders.", "row-reason"));
 
             if (r.WallAfter != r.WallBefore)
                 detail.Add(Text($"Rams damaged the wall: level {r.WallBefore} → {r.WallAfter}.", "row-info"));
+            if (r.Conquered)
+                detail.Add(Text(r.Kind == ReportKind.Attack
+                    ? $"The noblemen won {r.DefenderVillage} over: loyalty {r.LoyaltyBefore} → 0. The surviving troops have moved in, and its loyalty to you starts at {r.LoyaltyAfter}."
+                    : $"{r.DefenderVillage}'s loyalty fell from {r.LoyaltyBefore} to 0 and it now belongs to {r.AttackerPlayer}.", "detail-effect"));
+            else if (r.LoyaltyBefore > r.LoyaltyAfter && r.LoyaltyAfter >= 0)
+                detail.Add(Text($"Noblemen swayed the village: loyalty {r.LoyaltyBefore} → {r.LoyaltyAfter}.", r.Kind == ReportKind.Attack ? "row-info" : "row-reason"));
             if (r.CatapultBuilding >= 0)
             {
                 string building = Buildings.Get((BuildingType)r.CatapultBuilding).Name;
@@ -118,16 +147,8 @@ namespace MedievalWorldConquest
                     : r.CatapultAfter == r.CatapultBefore ? $"The catapults didn't damage the {building} (level {r.CatapultBefore})."
                     : $"Catapults hit the {building}: level {r.CatapultBefore} → {r.CatapultAfter}.", "row-info"));
             }
-            if (r.AttackerWon && r.Kind == ReportKind.Attack)
-            {
-                int total = r.Loot.Wood + r.Loot.Clay + r.Loot.Iron;
-                detail.Add(Text($"Loot: wood {r.Loot.Wood:N0} · clay {r.Loot.Clay:N0} · iron {r.Loot.Iron:N0}  ({total:N0} of {r.LootCapacity:N0} carried)", "detail-effect"));
-            }
-            if (r.AttackerWon && r.Kind == ReportKind.Defense)
-            {
-                int total = r.Loot.Wood + r.Loot.Clay + r.Loot.Iron;
-                detail.Add(Text($"The attackers carried off {total:N0} resources.", "row-reason"));
-            }
+            if (r.AttackerWon && !r.Conquered)
+                detail.Add(LootLine(r.Kind == ReportKind.Attack ? "Loot:" : "Carried off:", r.Loot, r.LootCapacity, r.Kind == ReportKind.Defense));
 
             if (r.Scouted && r.ScoutedLevels != null)
             {
@@ -141,20 +162,47 @@ namespace MedievalWorldConquest
             }
         }
 
+        /// <summary>
+        /// What was taken, as in Tribal Wars: each resource's icon and amount, then how much was carried out of what
+        /// the surviving troops could carry.
+        /// </summary>
+        static VisualElement LootLine(string label, Cost loot, int capacity, bool lost)
+        {
+            var line = Element("loot-line");
+            line.Add(Text(label, "row-title", "loot-label"));
+            foreach (var (icon, amount) in new[] { (Icons.Wood, loot.Wood), (Icons.Clay, loot.Clay), (Icons.Iron, loot.Iron) })
+            {
+                line.Add(Icons.Element(icon, 18, "loot-icon"));
+                line.Add(Text($"{amount:N0}", "loot-value"));
+            }
+            int total = loot.Wood + loot.Clay + loot.Iron;
+            line.Add(Text($"{total:N0} / {capacity:N0}", "loot-total"));
+            line.EnableInClassList("loot-line--lost", lost);
+            return line;
+        }
+
         /// <summary>A small table: one column per unit type, one row per set of numbers.</summary>
         static VisualElement TroopTable(params (string label, int[] values)[] rows)
         {
             var table = Element("troop-table");
             var header = Element("troop-row");
             header.Add(Text("", "troop-cell", "troop-label"));
-            foreach (var name in ShortNames) header.Add(Text(name, "troop-cell", "troop-head"));
+            // Unit icons across the top, as in Tribal Wars' reports (the name shows on hover).
+            foreach (var type in Units.InDisplayOrder)
+            {
+                var cell = Element("troop-cell", "troop-head");
+                cell.Add(Icons.Element(Icons.Unit(type), 20));
+                cell.tooltip = Units.Get(type).Name;
+                header.Add(cell);
+            }
             table.Add(header);
             foreach (var (label, values) in rows)
             {
                 var row = Element("troop-row");
                 row.Add(Text(label, "troop-cell", "troop-label"));
-                for (int i = 0; i < ShortNames.Length; i++)
+                foreach (var type in Units.InDisplayOrder)
                 {
+                    int i = (int)type;
                     int v = values != null && i < values.Length ? values[i] : 0;
                     var cell = Text(v == 0 ? "–" : v.ToString("N0"), "troop-cell");
                     if (v == 0) cell.AddToClassList("troop-cell--zero");

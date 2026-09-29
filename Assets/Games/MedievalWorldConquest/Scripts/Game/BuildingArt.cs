@@ -6,7 +6,7 @@ namespace MedievalWorldConquest
 {
     /// <summary>
     /// Draws each building's sprite at runtime. Every building has three looks (levels 1-9, 10-19 and 20+) so the
-    /// village visibly grows, plus an empty-plot signpost for level 0 and a scaffolding overlay for construction.
+    /// village visibly grows, plus a scaffolding overlay for construction (an empty plot shows nothing).
     /// Sprites are 128 x 128 pixels, drawn on a canvas whose ground line is <see cref="Ground"/>.
     /// </summary>
     static class BuildingArt
@@ -17,13 +17,13 @@ namespace MedievalWorldConquest
         static readonly Vector2 Pivot = new Vector2(0.5f, Ground / (float)Size);
 
         static readonly Dictionary<int, Sprite> cache = new Dictionary<int, Sprite>();
-        static Sprite signpost, scaffolding;
+        static Sprite scaffolding;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetCache()
         {
             cache.Clear();
-            signpost = scaffolding = null;
+            scaffolding = null;
         }
 
         /// <summary>0 for levels 1-9, 1 for 10-19, 2 for 20 and up.</summary>
@@ -31,7 +31,7 @@ namespace MedievalWorldConquest
 
         public static Sprite For(BuildingType type, int level)
         {
-            if (level <= 0) return Signpost;
+            if (level <= 0) return null;
             int tier = TierFor(level);
             int key = (int)type * 10 + tier;
             if (!cache.TryGetValue(key, out var sprite) || sprite == null)
@@ -39,7 +39,7 @@ namespace MedievalWorldConquest
                 var c = new Canvas();
                 switch (type)
                 {
-                    case BuildingType.TownHall: DrawTownHall(c, tier); break;
+                    case BuildingType.Headquarters: DrawHeadquarters(c, tier); break;
                     case BuildingType.TimberCamp: DrawTimberCamp(c, tier); break;
                     case BuildingType.ClayPit: DrawClayPit(c, tier); break;
                     case BuildingType.IronMine: DrawIronMine(c, tier); break;
@@ -49,13 +49,17 @@ namespace MedievalWorldConquest
                     case BuildingType.Stable: DrawStable(c, tier); break;
                     case BuildingType.Workshop: DrawWorkshop(c, tier); break;
                     case BuildingType.Wall: DrawGate(c, tier); break;
+                    case BuildingType.Academy: DrawAcademy(c); break;
+                    case BuildingType.RallyPoint: DrawRallyPoint(c); break;
+                    case BuildingType.Smithy: DrawSmithy(c, tier); break;
+                    case BuildingType.Market: DrawMarket(c, tier); break;
+                    case BuildingType.HidingPlace: DrawHidingPlace(c, tier); break;
                 }
                 cache[key] = sprite = c.ToSprite($"{type}{tier}");
             }
             return sprite;
         }
 
-        public static Sprite Signpost => signpost != null ? signpost : signpost = MakeSignpost();
         public static Sprite Scaffolding => scaffolding != null ? scaffolding : scaffolding = MakeScaffolding();
 
         // ---------------------------------------------------------------- palette
@@ -76,7 +80,7 @@ namespace MedievalWorldConquest
 
         // ---------------------------------------------------------------- buildings
 
-        static void DrawTownHall(Canvas c, int tier)
+        static void DrawHeadquarters(Canvas c, int tier)
         {
             if (tier == 0)
             {
@@ -329,6 +333,151 @@ namespace MedievalWorldConquest
         }
 
         /// <summary>
+        /// The rally point (one level): a tall pole flying a red banner, a small tent and a rack of spears, low enough
+        /// not to hide the Headquarters behind it.
+        /// </summary>
+        static void DrawRallyPoint(Canvas c)
+        {
+            c.Rect(62, Ground, 66, 70, DarkWood);                        // the pole
+            c.Rect(66, 52, 82, 68, RoofRed);                             // the banner...
+            c.Triangle(82, 68, 92, 68, 82, 60, RoofRed);                 // ...with swallowtails
+            c.Triangle(82, 52, 92, 52, 82, 60, RoofRed);
+            c.Rect(70, 58, 82, 62, Window);                              // a stripe on it
+            c.Triangle(18, Ground, 54, Ground, 36, 38, Straw);           // a tent
+            c.Triangle(32, Ground, 40, Ground, 36, 22, Doorway);         // its doorway
+            c.Rect(80, Ground, 110, Ground + 3, DarkWood);               // a weapon rack...
+            foreach (int x in new[] { 84, 92, 100, 106 }) c.Line(x, Ground, x + 4, Ground + 30, Wood);
+            foreach (int x in new[] { 88, 96, 104, 110 }) c.Triangle(x - 2, Ground + 30, x + 2, Ground + 30, x, Ground + 35, Stone);
+        }
+
+        /// <summary>
+        /// A scholars' hall (it only has the one level): pale columns before stone walls, a pediment, a blue dome
+        /// and a pennant on top.
+        /// </summary>
+        static void DrawAcademy(Canvas c)
+        {
+            var marble = new Color(0.88f, 0.87f, 0.82f);
+            c.Ellipse(64, 72, 24, 24, RoofBlue);                        // the dome, mostly hidden behind the front
+            c.Rect(62, 94, 66, 100, DarkStone);                          // its lantern
+            c.Rect(63, 100, 65, 118, DarkWood);                          // flagpole
+            c.Triangle(65, 118, 65, 108, 80, 113, RoofRed);              // pennant
+            c.Bricks(20, Ground, 108, 56, Stone);
+            c.Rect(16, Ground, 112, Ground + 4, DarkStone);              // steps
+            for (int x = 24; x < 104; x += 14) c.Rect(x, Ground + 4, x + 7, 56, marble); // columns
+            c.Arch(57, Ground + 4, 71, 38, Doorway);
+            c.Rect(16, 56, 112, 62, marble);                             // architrave
+            c.Triangle(14, 62, 114, 62, 64, 84, Stone);                  // pediment
+            c.Ellipse(64, 70, 5, 5, Window);                             // round window in the pediment
+        }
+
+        static readonly Color Ember = new Color(1f, 0.5f, 0.12f);
+        static readonly Color Smoke = new Color(0.78f, 0.78f, 0.8f, 0.6f);
+        static readonly Color Iron = new Color(0.32f, 0.34f, 0.38f);
+        static readonly Color Cloth = new Color(0.95f, 0.9f, 0.78f);
+        static readonly Color Earth = new Color(0.42f, 0.3f, 0.18f);
+        static readonly Color Turf = new Color(0.36f, 0.52f, 0.22f);
+
+        /// <summary>
+        /// The smithy: a forge with its front open on the glowing hearth, an anvil outside and a smoking chimney;
+        /// then a stone footing, a tiled roof and a rack of blades; at the top tier, a stone hall with two chimneys.
+        /// </summary>
+        static void DrawSmithy(Canvas c, int tier)
+        {
+            int left = 30 - tier * 4, right = 100 + tier * 4, top = 40 + tier * 6;
+            if (tier < 2) c.Planks(left, Ground, right, top, Wood);
+            else c.Bricks(left, Ground, right, top, Stone);
+            if (tier == 1) c.Bricks(left, Ground, right, Ground + 12, Stone);
+            c.Rect(left + 6, Ground, left + 36, top - 10, Doorway);          // the open front...
+            c.Bricks(left + 10, Ground, left + 30, Ground + 10, DarkStone);  // ...the hearth inside...
+            c.Ellipse(left + 20, Ground + 12, 7, 4, Ember);                  // ...and its fire
+            c.Rect(right - 20, Ground + 16, right - 10, Ground + 26, Window);
+            c.Roof(left - 5, right + 5, top, top + 20, tier == 0 ? Thatch : tier == 1 ? RoofRed : DarkStone, tier == 0);
+
+            // Chimneys, in front of the roof, with smoke.
+            int chimneys = tier == 2 ? 2 : 1;
+            for (int i = 0; i < chimneys; i++)
+            {
+                int cx = right - 18 - i * 44;
+                c.Bricks(cx - 5, top + 4, cx + 5, top + 30 + tier * 3, Stone);
+                c.Ellipse(cx, top + 36 + tier * 3, 5, 4, Smoke);
+                c.Ellipse(cx + 5, top + 44 + tier * 3, 6, 4, Smoke);
+            }
+
+            // The anvil on its block, out front.
+            int ax = right - 30;
+            c.Rect(ax - 3, Ground, ax + 4, Ground + 7, DarkWood);
+            c.Rect(ax - 8, Ground + 7, ax + 7, Ground + 11, Iron);
+            c.Triangle(ax + 7, Ground + 11, ax + 7, Ground + 8, ax + 13, Ground + 10, Iron); // its horn
+
+            if (tier >= 1)
+            {
+                // A rack of new blades at the right.
+                int rx = System.Math.Min(right + 6, Size - 18);
+                c.Rect(rx, Ground, rx + 3, Ground + 30, DarkWood);
+                c.Rect(rx + 12, Ground, rx + 15, Ground + 30, DarkWood);
+                c.Rect(rx, Ground + 24, rx + 15, Ground + 27, DarkWood);
+                foreach (int x in new[] { rx + 5, rx + 9 }) c.Rect(x, Ground + 4, x + 2, Ground + 24, Stone);
+            }
+        }
+
+        /// <summary>A market stall: a counter of goods under a striped awning on two posts.</summary>
+        static void Stall(Canvas c, int x0, int x1, Color stripe)
+        {
+            c.Rect(x0, Ground, x0 + 3, Ground + 34, DarkWood);
+            c.Rect(x1 - 3, Ground, x1, Ground + 34, DarkWood);
+            c.Planks(x0 + 2, Ground, x1 - 2, Ground + 13, Wood);
+            // Goods on the counter: apples, cabbages, a pot.
+            c.Ellipse(x0 + 9, Ground + 15, 4, 3, new Color(0.8f, 0.2f, 0.15f));
+            c.Ellipse(x0 + 17, Ground + 15, 4, 3, Crop);
+            c.Ellipse(x1 - 10, Ground + 16, 4, 4, Clay);
+            // The awning, in stripes, with a scalloped edge.
+            for (int x = x0 - 3; x < x1 + 3; x++)
+                c.Rect(x, Ground + 33, x + 1, Ground + 43, (x - x0 + 3) / 5 % 2 == 0 ? stripe : Cloth);
+            for (int x = x0; x < x1; x += 6) c.Ellipse(x + 2, Ground + 33, 3, 2, (x - x0) / 6 % 2 == 0 ? stripe : Cloth);
+        }
+
+        /// <summary>The market: a stall and a cart of goods; then two stalls; at the top tier, a stone market hall behind them.</summary>
+        static void DrawMarket(Canvas c, int tier)
+        {
+            if (tier == 2)
+            {
+                c.Bricks(12, Ground, 116, 54, Stone);
+                foreach (int x in new[] { 18, 52, 86 }) c.Arch(x, Ground, x + 24, 42, Doorway);
+                c.Roof(6, 122, 54, 76, RoofRed, false);
+            }
+            Stall(c, tier == 0 ? 36 : 12, tier == 0 ? 82 : 58, ShieldRed);
+            if (tier >= 1) Stall(c, 70, 116, ShieldBlue);
+            if (tier == 0)
+            {
+                // A handcart and a couple of crates.
+                c.Rect(92, Ground + 6, 120, Ground + 16, Wood);
+                c.Wheel(104, Ground + 6, 6);
+                c.Line(92, Ground + 12, 84, Ground + 4, DarkWood);
+                c.Crate(8, Ground, 12);
+                c.Crate(20, Ground, 10);
+            }
+            else c.Crate(58, Ground, 11);
+        }
+
+        /// <summary>The hiding place: a low grassy bank with a small door in it, and bushes to hide it; later a stone-framed door and more cover.</summary>
+        static void DrawHidingPlace(Canvas c, int tier)
+        {
+            c.Hill(64, Ground, 40 + tier * 8, 32 + tier * 6, Earth, Turf);
+            if (tier >= 1) c.Arch(53, Ground, 75, 27, Stone);             // a stone frame round the door
+            c.Arch(56, Ground, 72, 24, Doorway);
+            c.Planks(57, Ground, 71, 18, DarkWood);                     // the door, half open
+            c.Ellipse(18, Ground + 8, 12, 9, Crop);                     // bushes
+            c.Ellipse(108, Ground + 7, 11, 8, Crop);
+            if (tier >= 1)
+            {
+                c.Ellipse(30, Ground + 5, 9, 6, Crop);
+                c.Ellipse(96, Ground + 12, 8, 7, Crop);
+                c.Rect(78, Ground, 80, Ground + 20, DarkWood);            // a lantern on a post
+                c.Rect(76, Ground + 20, 83, Ground + 26, Window);
+            }
+        }
+
+        /// <summary>
         /// Half the width of the gate sprite for a wall tier, in world units: the ring leaves just this much room
         /// for it. Tier 0 spans pixels 28-104 (with its palisade wings); the towered gates span 18-112.
         /// </summary>
@@ -382,17 +531,6 @@ namespace MedievalWorldConquest
                 c.Triangle(px, 58, px + 6, 58, px + 3, 64, DarkWood);
             }
             c.Rect(40, 48, 88, 53, DarkWood);
-        }
-
-        static Sprite MakeSignpost()
-        {
-            var c = new Canvas();
-            c.Rect(62, Ground, 66, 40, DarkWood);
-            c.Planks(46, 32, 82, 46, Wood);
-            c.Rect(52, 38, 76, 40, DarkWood); // "writing"
-            // Corner stakes marking out the plot.
-            foreach (int x in new[] { 22, 104 }) c.Rect(x, Ground, x + 3, Ground + 12, Wood);
-            return c.ToSprite("Signpost");
         }
 
         static Sprite MakeScaffolding()

@@ -11,7 +11,7 @@ namespace MedievalWorldConquest.Simulation
         public BuildingType Type;
         /// <summary>The level this order builds.</summary>
         public int Level;
-        /// <summary>Game seconds it takes, fixed when queued (using the Town Hall level at that time).</summary>
+        /// <summary>Game seconds it takes, fixed when queued (using the Headquarters level at that time).</summary>
         public double Seconds;
         /// <summary>When it finishes, once construction has started; 0 while still waiting its turn.</summary>
         public double FinishTime;
@@ -45,6 +45,22 @@ namespace MedievalWorldConquest.Simulation
         public double FinishTime(double now) => Started ? NextAt + (Remaining - 1) * SecondsEach : now + Remaining * SecondsEach;
     }
 
+    /// <summary>A unit being researched at the smithy (researches run one after another, like building upgrades).</summary>
+    [Serializable]
+    public class ResearchOrder
+    {
+        public int Id;
+        public UnitType Unit;
+        /// <summary>Game seconds it takes, fixed when ordered (using the smithy level at that time).</summary>
+        public double Seconds;
+        /// <summary>When it finishes, once under way; 0 while waiting its turn.</summary>
+        public double FinishTime;
+        /// <summary>What was paid, refunded if cancelled.</summary>
+        public Cost Paid;
+
+        public bool Started => FinishTime > 0;
+    }
+
     [Serializable]
     public class Village
     {
@@ -63,6 +79,11 @@ namespace MedievalWorldConquest.Simulation
         /// the stock (see <see cref="World.Touch"/>), not at every event, which keeps big worlds fast.
         /// </summary>
         public double StockTime;
+        /// <summary>
+        /// How loyal the village is to its owner, 0 to 100. Noblemen lower it; at zero the village changes hands. It
+        /// creeps back up by itself (brought up to date along with the stores).
+        /// </summary>
+        public double Loyalty = 100;
         public List<BuildOrder> Queue = new List<BuildOrder>();
         public int NextOrderId = 1;
         /// <summary>For barbarian villages: how many times they've grown on their own (drives which building grows next).</summary>
@@ -74,6 +95,21 @@ namespace MedievalWorldConquest.Simulation
         public List<RecruitOrder> Recruitment = new List<RecruitOrder>();
 
         public int TroopCount(UnitType type) => Troops != null && (int)type < Troops.Length ? Troops[(int)type] : 0;
+
+        /// <summary>Per <see cref="UnitType"/>: 1 once the unit has been researched at the smithy.</summary>
+        public int[] Research = new int[Units.Count];
+        /// <summary>Research ordered at the smithy, the first one under way.</summary>
+        public List<ResearchOrder> Researching = new List<ResearchOrder>();
+
+        /// <summary>Whether the village may train this unit as far as research goes (spearmen and noblemen need none).</summary>
+        public bool IsResearched(UnitType type) =>
+            !Units.Get(type).NeedsResearch || (Research != null && (int)type < Research.Length && Research[(int)type] > 0);
+
+        /// <summary>Whether this unit is being researched or waiting in the smithy's queue.</summary>
+        public bool IsBeingResearched(UnitType type) => Researching != null && Researching.Exists(o => o.Unit == type);
+
+        /// <summary>How much of each resource the hiding place keeps from plunderers.</summary>
+        public int HiddenCapacity => Buildings.HiddenCapacity(Level(BuildingType.HidingPlace));
 
         /// <summary>Troops from other villages stationed here to help defend it.</summary>
         public List<SupportGroup> Supports = new List<SupportGroup>();
@@ -169,9 +205,12 @@ namespace MedievalWorldConquest.Simulation
             Levels = new int[Buildings.Count];
             foreach (var d in Buildings.Definitions) Levels[(int)d.Type] = d.StartingLevel;
             Wood = Clay = Iron = 500;
+            Loyalty = 100;
             Queue = new List<BuildOrder>();
             NextOrderId = 1;
             Troops = new int[Units.Count];
+            Research = new int[Units.Count];
+            Researching = new List<ResearchOrder>();
             Recruitment = new List<RecruitOrder>();
             Supports = new List<SupportGroup>();
             AwayPopulation = 0;

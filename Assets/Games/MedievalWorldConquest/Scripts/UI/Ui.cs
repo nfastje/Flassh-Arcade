@@ -28,6 +28,15 @@ namespace MedievalWorldConquest
             return b;
         }
 
+        /// <summary>Clickable text, like a link on a web page: a player's or village's name that opens its window.</summary>
+        public static Button Link(string text, Action onClick, params string[] classes)
+        {
+            var b = new Button(onClick) { text = text };
+            b.AddToClassList("link");
+            foreach (var c in classes) b.AddToClassList(c);
+            return b;
+        }
+
         public static void Show(VisualElement e, bool visible) => e.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
 
         /// <summary>Sets a label's text only if it changed, so refreshing every frame doesn't force relayouts.</summary>

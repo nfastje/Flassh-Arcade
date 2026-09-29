@@ -163,7 +163,7 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(1, loaded.Events.Pending.Count(x => x.Kind == EventKind.None));
             // The rival lords come back as they were.
             Assert.AreEqual(world.Players.Count, loaded.Players.Count);
-            var lord = world.Players.First(p => !p.IsHuman);
+            var lord = world.Players.First(p => !p.IsHuman && p.Personality != AiPersonality.Inactive);
             var loadedLord = loaded.FindPlayer(lord.Id);
             Assert.AreEqual(lord.Name, loadedLord.Name);
             Assert.AreEqual(lord.Personality, loadedLord.Personality);

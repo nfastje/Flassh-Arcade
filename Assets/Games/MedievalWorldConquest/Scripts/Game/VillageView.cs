@@ -23,12 +23,12 @@ namespace MedievalWorldConquest
 
         /// <summary>
         /// Where each building stands (the middle of its base), indexed by <see cref="BuildingType"/>. Inside the
-        /// clearing: the Town Hall in the middle, barracks and warehouse behind, stable and workshop in front, and the
+        /// clearing: the Headquarters in the middle, barracks and warehouse behind, stable and workshop in front, and the
         /// gate. Outside: a resource building in each corner.
         /// </summary>
         static readonly Vector2[] Plots =
         {
-            new Vector2(0f, 0.15f),     // Town Hall
+            new Vector2(0f, 0.15f),     // Headquarters
             new Vector2(5.3f, -3.3f),   // Timber Camp: bottom-right, in the forest
             new Vector2(-5.3f, -3.3f),  // Clay Pit: bottom-left
             new Vector2(-5.3f, 1.9f),   // Iron Mine: top-left, in the hills
@@ -38,6 +38,11 @@ namespace MedievalWorldConquest
             new Vector2(1.9f, -1.5f),   // Stable (clear of the gate's towers)
             new Vector2(-1.9f, -1.5f),  // Workshop
             new Vector2(0f, -2.4f),     // Wall: its gate, in the gap at the front of the ring
+            new Vector2(0f, 2.75f),     // Academy: on the rise behind the village, above the Headquarters
+            new Vector2(0f, -1.3f),     // Rally Point: the square in front of the Headquarters, inside the gate
+            new Vector2(-2.6f, 2.8f),   // Smithy: on the rise behind the village, towards the iron mine
+            new Vector2(2.6f, 2.8f),    // Market: on the rise behind the village, towards the farm
+            new Vector2(-2.9f, -3.8f),  // Hiding Place: dug into a bank outside the gate
         };
 
         /// <summary>The ground each corner's resource building works, tinted over the grass around it.</summary>
@@ -51,7 +56,8 @@ namespace MedievalWorldConquest
         const float PlotHalfWidth = 1.1f;
 
         /// <summary>How far above its base a click still counts as a building. The gate is short, so it doesn't steal clicks from the buildings behind it.</summary>
-        static float PlotHeight(int index) => index == (int)BuildingType.Wall ? 0.9f : 1.9f;
+        static float PlotHeight(int index) =>
+            index == (int)BuildingType.Wall ? 0.9f : index == (int)BuildingType.RallyPoint || index == (int)BuildingType.HidingPlace ? 1.2f : 1.9f;
 
         SpriteRenderer grass;
         Camera cam;
@@ -62,14 +68,15 @@ namespace MedievalWorldConquest
         /// <summary>Where the given building stands, for placing its level badge.</summary>
         public static Vector2 PlotOf(BuildingType type) => Plots[(int)type];
 
-        /// <summary>The building whose plot contains a world position, if any.</summary>
-        public static BuildingType? BuildingAt(Vector2 world)
+        /// <summary>The building standing (or going up) whose plot contains a world position, if any. Empty plots show nothing and can't be clicked: new buildings are ordered at the Headquarters.</summary>
+        public static BuildingType? BuildingAt(Vector2 world, Village village)
         {
             // Check front (lower) plots first, since they're drawn on top.
             BuildingType? hit = null;
             float bestY = float.MaxValue;
             for (int i = 0; i < Plots.Length; i++)
             {
+                if (!Stands(village, (BuildingType)i)) continue;
                 var p = Plots[i];
                 bool inside = Mathf.Abs(world.x - p.x) <= PlotHalfWidth && world.y >= p.y - 0.2f && world.y <= p.y + PlotHeight(i);
                 if (inside && p.y < bestY)
@@ -80,6 +87,10 @@ namespace MedievalWorldConquest
             }
             return hit;
         }
+
+        /// <summary>Whether a building is there to see: built, or under construction for the first time.</summary>
+        static bool Stands(Village village, BuildingType type) =>
+            village.Level(type) > 0 || (village.Queue.Count > 0 && village.Queue[0].Type == type);
 
         public static VillageView Create(Camera camera, int seed)
         {
@@ -138,7 +149,7 @@ namespace MedievalWorldConquest
             for (int i = 0; i < Buildings.Count; i++)
             {
                 var plot = Plots[i];
-                buildings[i] = AddSprite(Buildings.Get((BuildingType)i).Name, BuildingArt.Signpost, DepthOrder(plot.y));
+                buildings[i] = AddSprite(Buildings.Get((BuildingType)i).Name, null, DepthOrder(plot.y));
                 buildings[i].transform.position = plot;
                 scaffolds[i] = AddSprite("Scaffolding", BuildingArt.Scaffolding, DepthOrder(plot.y) + 1);
                 scaffolds[i].transform.position = plot;
@@ -156,7 +167,8 @@ namespace MedievalWorldConquest
                 int level = village.Level(type);
                 if (level != shownLevels[i])
                 {
-                    buildings[i].sprite = BuildingArt.For(type, level);
+                    // An empty plot is just grass until the building goes up.
+                    buildings[i].sprite = level > 0 ? BuildingArt.For(type, level) : null;
                     shownLevels[i] = level;
                 }
                 scaffolds[i].enabled = village.Queue.Count > 0 && village.Queue[0].Type == type;

@@ -37,7 +37,22 @@ namespace MedievalWorldConquest.Tests
 
             int total = World.MapSize * World.MapSize;
             foreach (var pair in counts) Assert.Greater(pair.Value, 0, $"no {pair.Key} at all");
-            Assert.Less(counts[TerrainType.Water], total * 0.3, "too much water");
+            Assert.Less(counts[TerrainType.Water], total * 0.01, "under 1% water");
+        }
+
+        [Test]
+        public void WaterIsOnlyTheOddSingleFieldPond()
+        {
+            int ponds = 0, touching = 0;
+            for (int x = 1; x < World.MapSize - 1; x++)
+                for (int y = 1; y < World.MapSize - 1; y++)
+                {
+                    if (Terrain.At(42, x, y) != TerrainType.Water) continue;
+                    ponds++;
+                    if (Terrain.At(42, x + 1, y) == TerrainType.Water || Terrain.At(42, x, y + 1) == TerrainType.Water) touching++;
+                }
+            Assert.Greater(ponds, 0);
+            Assert.Less(touching, ponds * 0.05, "ponds almost never join up into lakes");
         }
 
         [Test]
@@ -216,13 +231,13 @@ namespace MedievalWorldConquest.Tests
             world.Villages.RemoveAll(v => v.IsBarbarian); // what a version-3 save looks like
             AsOnTheOldMap(world);
             var home = world.PlayerVillage;
-            home.Levels[(int)BuildingType.TownHall] = 7;
+            home.Levels[(int)BuildingType.Headquarters] = 7;
             world.SpawnRadius = 0;
 
             world.UpgradeFrom(3);
 
             Assert.Greater(world.Villages.Count(v => v.IsBarbarian), 5);
-            Assert.AreEqual(7, home.Level(BuildingType.TownHall));
+            Assert.AreEqual(7, home.Level(BuildingType.Headquarters));
             Assert.AreEqual(World.MapSize / 2, home.X, "the old map now sits in the middle of the new one");
         }
 

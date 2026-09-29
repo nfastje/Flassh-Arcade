@@ -21,6 +21,14 @@ namespace MedievalWorldConquest.Simulation
         AiThink = 5,
         /// <summary>The settled circle widens a step, and new barbarians and lords appear round its edge.</summary>
         WorldGrowth = 6,
+        /// <summary>A unit's research at the smithy finishes. A = the research order's id.</summary>
+        ResearchComplete = 7,
+        /// <summary>A market offer runs out: its reserved resources go back to its village. A = the offer's id.</summary>
+        OfferExpires = 8,
+        /// <summary>An inactive player's village builds one more level on its own.</summary>
+        InactiveGrowth = 9,
+        /// <summary>An inactive player's account is closed: their villages go barbarian. A = the player's id.</summary>
+        InactiveLeaves = 10,
     }
 
     /// <summary>

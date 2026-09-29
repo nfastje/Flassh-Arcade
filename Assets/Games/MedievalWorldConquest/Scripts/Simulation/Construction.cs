@@ -49,7 +49,7 @@ namespace MedievalWorldConquest.Simulation
             }
 
             check.Cost = Buildings.CostOf(type, target);
-            check.Seconds = Buildings.BuildSeconds(type, target, v.Level(BuildingType.TownHall));
+            check.Seconds = Buildings.BuildSeconds(type, target, v.Level(BuildingType.Headquarters));
 
             // A locked building says what it needs, rather than that the queue happens to be full.
             if (unmet.HasValue)

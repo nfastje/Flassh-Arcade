@@ -9,7 +9,7 @@ namespace MedievalWorldConquest.Tests
         [Test]
         public void LevelOneCostsMatchTheTable()
         {
-            var cost = Buildings.CostOf(BuildingType.TownHall, 1);
+            var cost = Buildings.CostOf(BuildingType.Headquarters, 1);
             Assert.AreEqual(new Cost(90, 80, 70, 5), cost);
         }
 
@@ -22,11 +22,11 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void TownHallMakesBuildingFaster()
+        public void HeadquartersMakesBuildingFaster()
         {
             double slow = Buildings.BuildSeconds(BuildingType.Farm, 5, 1);
             double fast = Buildings.BuildSeconds(BuildingType.Farm, 5, 11);
-            Assert.AreEqual(slow / Math.Pow(Buildings.TownHallSpeedup, 10), fast, 1e-6);
+            Assert.AreEqual(slow / Math.Pow(Buildings.HeadquartersSpeedup, 10), fast, 1e-6);
         }
 
         [Test]
@@ -42,8 +42,10 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void PopulationAtLevelIsTheSumOfEachLevel()
+        public void PopulationAtLevelIsTheSumOfEachLevelsStep()
         {
+            // As in Tribal Wars, a building's population is base × factor^(level − 1) in all: iron mine 7 is 10 × 1.17^6.
+            Assert.AreEqual(26, Buildings.PopulationAtLevel(BuildingType.IronMine, 7));
             int sum = 0;
             for (int l = 1; l <= 7; l++) sum += Buildings.PopulationOfLevel(BuildingType.IronMine, l);
             Assert.AreEqual(sum, Buildings.PopulationAtLevel(BuildingType.IronMine, 7));
@@ -191,9 +193,9 @@ namespace MedievalWorldConquest.Tests
         {
             var world = NewWorld();
             var v = world.PlayerVillage;
-            v.Levels[(int)BuildingType.TownHall] = 15; // level 16 costs more than 1000 wood
+            v.Levels[(int)BuildingType.Headquarters] = 15; // level 16 costs more than 1000 wood
             v.Levels[(int)BuildingType.Farm] = 30;
-            Assert.AreEqual(BuildStatus.WarehouseTooSmall, world.CheckBuild(v, BuildingType.TownHall).Status);
+            Assert.AreEqual(BuildStatus.WarehouseTooSmall, world.CheckBuild(v, BuildingType.Headquarters).Status);
         }
 
         [Test]
@@ -214,18 +216,21 @@ namespace MedievalWorldConquest.Tests
 
             var barracks = world.CheckBuild(v, BuildingType.Barracks);
             Assert.AreEqual(BuildStatus.NeedsBuilding, barracks.Status);
-            Assert.AreEqual(BuildingType.TownHall, barracks.Required.Building);
+            Assert.AreEqual(BuildingType.Headquarters, barracks.Required.Building);
             Assert.AreEqual(3, barracks.Required.Level);
 
             // The stable needs two things; it reports whichever is still missing.
-            v.Levels[(int)BuildingType.TownHall] = 10;
+            v.Levels[(int)BuildingType.Headquarters] = 10;
             var stable = world.CheckBuild(v, BuildingType.Stable);
             Assert.AreEqual(BuildStatus.NeedsBuilding, stable.Status);
             Assert.AreEqual(BuildingType.Barracks, stable.Required.Building);
             Assert.AreEqual(5, stable.Required.Level);
 
+            // ...and, as in Tribal Wars, a smithy at 5.
             v.Levels[(int)BuildingType.Barracks] = 5;
             v.Levels[(int)BuildingType.Farm] = 10;
+            Assert.AreEqual(BuildingType.Smithy, world.CheckBuild(v, BuildingType.Stable).Required.Building);
+            v.Levels[(int)BuildingType.Smithy] = 5;
             Assert.AreEqual(BuildStatus.Ok, world.CheckBuild(v, BuildingType.Stable).Status);
         }
 
@@ -276,13 +281,13 @@ namespace MedievalWorldConquest.Tests
             var world = NewWorld();
             var v = world.PlayerVillage;
             v.Wood = v.Clay = v.Iron = 1000;
-            world.QueueBuild(v, BuildingType.TownHall);
+            world.QueueBuild(v, BuildingType.Headquarters);
             world.QueueBuild(v, BuildingType.TimberCamp);
             world.QueueBuild(v, BuildingType.TimberCamp);
 
             world.AdvanceByRealSeconds(24 * 3600);
 
-            Assert.AreEqual(2, v.Level(BuildingType.TownHall));
+            Assert.AreEqual(2, v.Level(BuildingType.Headquarters));
             Assert.AreEqual(3, v.Level(BuildingType.TimberCamp));
             Assert.AreEqual(0, v.Queue.Count);
         }
@@ -320,7 +325,7 @@ namespace MedievalWorldConquest.Tests
             world.UpgradeFrom(1);
 
             Assert.AreEqual(Buildings.Count, v.Levels.Length);
-            Assert.AreEqual(1, v.Level(BuildingType.TownHall));
+            Assert.AreEqual(1, v.Level(BuildingType.Headquarters));
             Assert.AreEqual(500, v.Wood);
             Assert.AreEqual(World.CurrentVersion, world.Version);
         }

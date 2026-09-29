@@ -13,8 +13,9 @@ namespace MedievalWorldConquest
     /// </summary>
     public class MiniMap
     {
-        /// <summary>Size on screen, in reference pixels (1280 x 720).</summary>
-        public const float Size = 220f;
+        /// <summary>Size on screen, in reference pixels (1280 x 720): as wide as the map's fields make it, relative to its height.</summary>
+        public const float Width = 250f;
+        static float Height => Width / MapView.FieldWidth;
         const int PixelsPerField = 2;
         const float RedrawSeconds = 1f;
 
@@ -36,8 +37,8 @@ namespace MedievalWorldConquest
         {
             this.centreOn = centreOn;
             Root = Element("minimap");
-            Root.style.width = Size;
-            Root.style.height = Size;
+            Root.style.width = Width;
+            Root.style.height = Height;
             frame = Element("minimap-frame");
             frame.pickingMode = PickingMode.Ignore;
             Root.Add(frame);
@@ -76,13 +77,13 @@ namespace MedievalWorldConquest
             }
 
             // The frame round the part of the map in view.
-            float scale = Size / World.MapSize;
+            float scaleX = Width / World.MapSize, scaleY = Height / World.MapSize;
             float left = Mathf.Clamp(viewInFields.xMin, 0, World.MapSize), right = Mathf.Clamp(viewInFields.xMax, 0, World.MapSize);
             float bottom = Mathf.Clamp(viewInFields.yMin, 0, World.MapSize), top = Mathf.Clamp(viewInFields.yMax, 0, World.MapSize);
-            frame.style.left = left * scale;
-            frame.style.width = Math.Max(2f, (right - left) * scale);
-            frame.style.top = (World.MapSize - top) * scale;
-            frame.style.height = Math.Max(2f, (top - bottom) * scale);
+            frame.style.left = left * scaleX;
+            frame.style.width = Math.Max(2f, (right - left) * scaleX);
+            frame.style.top = (World.MapSize - top) * scaleY;
+            frame.style.height = Math.Max(2f, (top - bottom) * scaleY);
         }
 
         void BuildTerrain(World world)

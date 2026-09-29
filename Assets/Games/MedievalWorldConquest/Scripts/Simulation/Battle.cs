@@ -23,7 +23,7 @@ namespace MedievalWorldConquest.Simulation
     /// The battle rules, modelled on Tribal Wars, as pure functions of the armies involved:
     /// scouts fight scouts; rams knock down the wall; the attack is split by unit class and each defender counters
     /// with its matching defence (plus the villagers' base defence), boosted by the wall and swung by luck; the
-    /// stronger side wins, losing (weaker Ã· stronger)^1.5 of its army while the loser is wiped out.
+    /// stronger side wins, losing (weaker ÷ stronger)^1.5 of its army while the loser is wiped out.
     /// </summary>
     public static class Battle
     {
@@ -31,7 +31,7 @@ namespace MedievalWorldConquest.Simulation
         public const double VillagerDefense = 20;
         /// <summary>Luck swings the attack by up to this much either way.</summary>
         public const double MaxLuck = 0.25;
-        /// <summary>The winner loses (loser Ã· winner) to this power of its army.</summary>
+        /// <summary>The winner loses (loser ÷ winner) to this power of its army.</summary>
         public const double LossExponent = 1.5;
 
         /// <summary>Rams needed to knock a wall down one level from <paramref name="level"/>.</summary>

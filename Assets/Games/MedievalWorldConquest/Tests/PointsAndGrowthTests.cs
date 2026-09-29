@@ -9,7 +9,7 @@ namespace MedievalWorldConquest.Tests
         [Test]
         public void LevelOneIsWorthEachBuildingsBaseValue()
         {
-            Assert.AreEqual(10, Buildings.PointsOfLevel(BuildingType.TownHall, 1));
+            Assert.AreEqual(10, Buildings.PointsOfLevel(BuildingType.Headquarters, 1));
             Assert.AreEqual(6, Buildings.PointsOfLevel(BuildingType.TimberCamp, 1));
             Assert.AreEqual(5, Buildings.PointsOfLevel(BuildingType.Farm, 1));
             Assert.AreEqual(16, Buildings.PointsOfLevel(BuildingType.Barracks, 1));
@@ -23,7 +23,7 @@ namespace MedievalWorldConquest.Tests
             // As in Tribal Wars: a building's points at level n are its base value × 1.2^(n-1).
             Assert.AreEqual(7, Buildings.PointsAtLevel(BuildingType.TimberCamp, 2));   // 6 × 1.2 = 7.2
             Assert.AreEqual(9, Buildings.PointsAtLevel(BuildingType.TimberCamp, 3));   // 6 × 1.44 = 8.64
-            Assert.AreEqual(1978, Buildings.PointsAtLevel(BuildingType.TownHall, 30)); // 10 × 1.2^29, as in Tribal Wars
+            Assert.AreEqual(1978, Buildings.PointsAtLevel(BuildingType.Headquarters, 30)); // 10 × 1.2^29, as in Tribal Wars
             Assert.AreEqual(2, Buildings.PointsOfLevel(BuildingType.TimberCamp, 3), "level 3 adds 9 - 7");
             Assert.AreEqual(0, Buildings.PointsOfLevel(BuildingType.TimberCamp, 0));
         }
@@ -46,7 +46,7 @@ namespace MedievalWorldConquest.Tests
         [Test]
         public void ANewVillageIsWorth39Points()
         {
-            // Town Hall 10 + three mines at 6 + farm 5 + warehouse 6.
+            // Headquarters 10 + three mines at 6 + farm 5 + warehouse 6.
             Assert.AreEqual(39, World.CreateNew(new WorldSettings()).PlayerVillage.Points);
         }
 

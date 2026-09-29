@@ -25,6 +25,20 @@ namespace MedievalWorldConquest.Simulation
         public int LastAttackerId = -1;
         /// <summary>What the lord remembers about other villages.</summary>
         public List<AiNote> Notes = new List<AiNote>();
+        /// <summary>The village the lord means to win over with its noblemen, or -1.</summary>
+        public int ConquestTargetId = -1;
+        /// <summary>For noobs: when they recently lost fights in their villages (too many in a short time and they quit).</summary>
+        public List<double> HitTimes = new List<double>();
+        /// <summary>Whether the lord has given up: its villages went barbarian and it no longer plays.</summary>
+        public bool Quit;
+        /// <summary>Gold coins minted so far (on coin worlds): they buy noble slots.</summary>
+        public int Coins;
+        /// <summary>For noobs: how far their build plan goes before they stop growing (0: their personality's usual).</summary>
+        public int StageCap;
+        /// <summary>For inactive players: the village points their village grows to before they stop for good.</summary>
+        public int TargetPoints;
+        /// <summary>The notes above, by village (not saved).</summary>
+        [NonSerialized] public Dictionary<int, AiNote> NotesByVillage;
     }
 
 
@@ -46,9 +60,36 @@ namespace MedievalWorldConquest.Simulation
         /// 6 added combat (commands, support, reports, barbarian garrisons);
         /// 7 added catapult targets and removed barbarian garrisons again;
         /// 8 added rival lords (computer players) and beginner protection;
-        /// 9 grew the map to 250 x 250 and made the world spread outward over time, with lords arriving as it does.
+        /// 9 grew the map to 250 x 250 and made the world spread outward over time, with lords arriving as it does;
+        /// 10 added conquest: the academy, noblemen, loyalty, owning several villages, and winning or losing;
+        /// 11 matched Tribal Wars' build and training times, and made most newcomers lords (many of them noobs who
+        /// can quit, leaving barbarian villages behind);
+        /// 12 added the rally point, village renaming, Tribal Wars' building population and single-field ponds;
+        /// 13 added the mounted archer;
+        /// 14 added the smithy (research), the market (merchants and offers) and the hiding place;
+        /// 15 added inactive players and more barbarian villages to fill the map;
+        /// 16 gave each noob its own limit on how far it grows;
+        /// 17 added the gold-coin option for noblemen (older worlds keep the flat price).
         /// </summary>
-        public const int CurrentVersion = 9;
+        public const int CurrentVersion = 17;
+
+        /// <summary>The longest name a village can be given.</summary>
+        public const int MaxVillageNameLength = 32;
+
+        /// <summary>
+        /// Renames one of the player's villages. The name is trimmed and cut to <see cref="MaxVillageNameLength"/>
+        /// characters. Returns whether it changed.
+        /// </summary>
+        public bool RenameVillage(Village v, string name)
+        {
+            if (v == null || v.OwnerId != HumanPlayer?.Id) return false;
+            name = (name ?? "").Trim();
+            if (name.Length == 0) return false;
+            if (name.Length > MaxVillageNameLength) name = name.Substring(0, MaxVillageNameLength).TrimEnd();
+            if (name == v.Name) return false;
+            v.Name = name;
+            return true;
+        }
         public const double SecondsPerDay = 24 * 60 * 60;
         /// <summary>A new world starts at dawn on day 1.</summary>
         public const double StartTime = 6 * 60 * 60;
@@ -121,12 +162,19 @@ namespace MedievalWorldConquest.Simulation
             {
                 v.Levels = Resized(v.Levels, Buildings.Count);
                 v.Troops = Resized(v.Troops, Units.Count);
+                v.Research = Resized(v.Research, Units.Count);
+                if (v.Researching == null) v.Researching = new List<ResearchOrder>();
                 if (v.Recruitment == null) v.Recruitment = new List<RecruitOrder>();
                 if (v.Queue == null) v.Queue = new List<BuildOrder>();
                 if (v.Supports == null) v.Supports = new List<SupportGroup>();
             }
             if (Commands == null) Commands = new List<Command>();
             if (Reports == null) Reports = new List<BattleReport>();
+            if (Offers == null) Offers = new List<MarketOffer>();
+            // Troops on the march or stationed elsewhere need room for new units too (v13: the mounted archer).
+            foreach (var c in Commands) c.Troops = Resized(c.Troops, Units.Count);
+            foreach (var v in Villages)
+                foreach (var g in v.Supports) g.Troops = Resized(g.Troops, Units.Count);
 
             // Version 6 gave barbarians garrisons that re-armed as they grew. Barbarians don't train troops, so
             // disband them (support stationed there by players stays).
@@ -152,6 +200,34 @@ namespace MedievalWorldConquest.Simulation
                 foreach (var p in Players) p.ProtectedUntil = Now + Settings.ProtectionDays * SecondsPerDay;
 
             if (savedVersion < 9) UpgradeToGrowingWorld(savedVersion, hadRivals);
+
+            // Loyalty arrived with conquest: every village starts fully loyal.
+            if (savedVersion < 10)
+            {
+                foreach (var v in Villages) v.Loyalty = MaxLoyalty;
+                foreach (var p in Players) p.ConquestTargetId = -1;
+                CurrentVillageId = PlayerVillage?.Id ?? 0;
+            }
+            foreach (var p in Players)
+                if (p.HitTimes == null) p.HitTimes = new List<double>();
+            // Every village has a rally point, as in Tribal Wars.
+            if (savedVersion < 12)
+                foreach (var v in Villages) v.Levels[(int)BuildingType.RallyPoint] = Math.Max(1, v.Levels[(int)BuildingType.RallyPoint]);
+            // Before the smithy, a unit only needed its building: villages keep every unit they could train then
+            // (and any they have), so no army suddenly can't be reinforced.
+            if (savedVersion < 14)
+                foreach (var v in Villages)
+                    for (int i = 0; i < Units.Count; i++)
+                    {
+                        var u = Units.Get((UnitType)i);
+                        if (v.Level(u.Building) >= u.RequiredLevel || v.Troops[i] > 0) v.Research[i] = 1;
+                    }
+            // Inactive players and the extra barbarians arrived in version 15: fill in the land already settled.
+            if (savedVersion < 15 && savedVersion >= 9) FillInSettledLand();
+            // Noobs all used to stop at the same size: give each its own limit (some will start growing again).
+            foreach (var p in Players)
+                if (p.Personality == AiPersonality.Noob && p.StageCap == 0)
+                    p.StageCap = NoobStageCap(Terrain.Hash(Settings.Seed ^ 0x68E31DA4, p.Id, 16));
             Version = CurrentVersion;
         }
 
@@ -188,7 +264,7 @@ namespace MedievalWorldConquest.Simulation
                     var rng = new Random(Settings.Seed * 7 + 5);
                     int wanted = Math.Max(1, (int)Math.Round(InitialLords * Settings.RivalDensity));
                     for (int i = 0; i < wanted; i++)
-                        if (TryFindSpot(rng, () => 8 + rng.NextDouble() * 20, out int x, out int y)) SpawnLord(x, y, rng);
+                        if (TryFindSpot(rng, () => 8 + rng.NextDouble() * 20, out int x, out int y)) SpawnLord(x, y, rng, RegularPersonality());
                 }
             }
             bool growing = false;
@@ -206,20 +282,46 @@ namespace MedievalWorldConquest.Simulation
 
         public Player HumanPlayer => Players.Find(p => p.IsHuman);
 
+        /// <summary>The village the player has chosen to look at and give orders from.</summary>
+        public int CurrentVillageId;
+
         [NonSerialized] Village playerVillage;
 
-        /// <summary>The human player's first village (Phase 0 has only one).</summary>
+        /// <summary>
+        /// The human player's current village: the one they chose, or, if they've lost it (or never chose), their
+        /// first. Null once they have no villages left.
+        /// </summary>
         public Village PlayerVillage
         {
             get
             {
                 var human = HumanPlayer;
                 if (human == null) return null;
-                // Asked for many times a frame by the UI, so remembered while it stays the player's.
-                if (playerVillage == null || playerVillage.OwnerId != human.Id)
-                    playerVillage = Villages.Find(v => v.OwnerId == human.Id);
+                // Asked for many times a frame by the UI, so remembered while it stays the player's current one.
+                if (playerVillage == null || playerVillage.OwnerId != human.Id || playerVillage.Id != CurrentVillageId)
+                {
+                    var chosen = FindVillage(CurrentVillageId);
+                    playerVillage = chosen != null && chosen.OwnerId == human.Id ? chosen : Villages.Find(v => v.OwnerId == human.Id);
+                    if (playerVillage != null) CurrentVillageId = playerVillage.Id;
+                }
                 return playerVillage;
             }
+        }
+
+        /// <summary>All the human player's villages, oldest first.</summary>
+        public List<Village> HumanVillages()
+        {
+            var human = HumanPlayer;
+            return human == null ? new List<Village>() : new List<Village>(VillagesOf(human.Id));
+        }
+
+        /// <summary>Makes one of the player's villages the current one. Returns whether it's theirs.</summary>
+        public bool SelectVillage(int villageId)
+        {
+            var v = FindVillage(villageId);
+            if (v == null || v.OwnerId != HumanPlayer?.Id) return false;
+            CurrentVillageId = villageId;
+            return true;
         }
 
         /// <summary>Schedules an event <paramref name="delay"/> game seconds from now.</summary>
@@ -236,6 +338,7 @@ namespace MedievalWorldConquest.Simulation
         /// </summary>
         public void AdvanceTo(double target)
         {
+            RebuildOwnerIndex();
             while (Events.Count > 0 && Events.Peek().Time <= target)
             {
                 var e = Events.Pop();
@@ -247,15 +350,18 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>
-        /// Brings a village's stores up to date: adds what its mines have produced since they were last updated,
-        /// up to the warehouse's capacity. Call before reading or changing its stock, and before changing a
+        /// Brings a village up to date: the units whose training has finished join its garrison, its loyalty
+        /// recovers, and its stores get what its mines have produced since they were last updated (up to the
+        /// warehouse's capacity). Call before reading or changing its stock, and before changing a
         /// building that affects production or storage (so the old rate applies up to now).
         /// </summary>
         public void Touch(Village v)
         {
+            CatchUpRecruitment(v);
             double seconds = Now - v.StockTime;
             if (seconds <= 0) return;
             v.StockTime = Now;
+            if (v.Loyalty < MaxLoyalty) v.Loyalty = Math.Min(MaxLoyalty, v.Loyalty + LoyaltyPerHour * seconds / 3600);
             double cap = v.StorageCapacity;
             if (v.Wood >= cap && v.Clay >= cap && v.Iron >= cap) return; // full up: nothing to add
             foreach (ResourceType r in ResourceTypes)
@@ -289,6 +395,18 @@ namespace MedievalWorldConquest.Simulation
                     break;
                 case EventKind.WorldGrowth:
                     GrowWorld(e);
+                    break;
+                case EventKind.ResearchComplete:
+                    CompleteResearch(e);
+                    break;
+                case EventKind.OfferExpires:
+                    ExpireOffer(e);
+                    break;
+                case EventKind.InactiveGrowth:
+                    GrowInactive(e);
+                    break;
+                case EventKind.InactiveLeaves:
+                    InactiveLeaves(e);
                     break;
             }
             EventApplied?.Invoke(e);

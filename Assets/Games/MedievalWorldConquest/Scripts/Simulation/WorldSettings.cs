@@ -31,6 +31,11 @@ namespace MedievalWorldConquest.Simulation
         public string PlayerName = "";
         /// <summary>Game days at the start during which no player's villages can be attacked by another player.</summary>
         public float ProtectionDays = 3f;
+        /// <summary>
+        /// Whether noblemen need gold coins, as on Tribal Wars' coin worlds (dearer noblemen, and each one needs a
+        /// noble slot bought with ever more coins), rather than a flat price. See <see cref="World.UnitCost"/>.
+        /// </summary>
+        public bool GoldCoins;
     }
 
     /// <summary>How well the rival lords play.</summary>

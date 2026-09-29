@@ -60,6 +60,43 @@ namespace MedievalWorldConquest.Simulation
             EnsureVillageIndex();
             Villages.Add(v);
             Index(v);
+            if (villagesByOwner != null) OwnerList(v.OwnerId).Add(v);
+        }
+
+        // Each owner's villages (barbarians' under -1), in the order they were founded or taken. Rebuilt at the
+        // start of every advance (so changes made from outside are picked up) and kept in step by SetOwner.
+        [NonSerialized] Dictionary<int, List<Village>> villagesByOwner;
+
+        void RebuildOwnerIndex()
+        {
+            villagesByOwner = new Dictionary<int, List<Village>>();
+            foreach (var v in Villages) OwnerList(v.OwnerId).Add(v);
+        }
+
+        List<Village> OwnerList(int ownerId)
+        {
+            if (!villagesByOwner.TryGetValue(ownerId, out var list)) villagesByOwner[ownerId] = list = new List<Village>();
+            return list;
+        }
+
+        /// <summary>A player's villages (-1: the barbarians'). Don't modify the list.</summary>
+        public List<Village> VillagesOf(int ownerId)
+        {
+            if (villagesByOwner == null) RebuildOwnerIndex();
+            return OwnerList(ownerId);
+        }
+
+        /// <summary>Hands a village to a new owner (-1 for the barbarians).</summary>
+        void SetOwner(Village v, int ownerId)
+        {
+            if (villagesByOwner != null && v.OwnerId != ownerId)
+            {
+                OwnerList(v.OwnerId).Remove(v);
+                OwnerList(ownerId).Add(v);
+            }
+            // Its old owner's market offers go with them (their goods were set aside, so nothing comes back).
+            if (v.OwnerId != ownerId) Offers.RemoveAll(o => o.VillageId == v.Id);
+            v.OwnerId = ownerId;
         }
 
         /// <summary>The village on a map field, if any.</summary>
@@ -94,6 +131,17 @@ namespace MedievalWorldConquest.Simulation
             return into;
         }
 
+        /// <summary>
+        /// The map is split into 10 × 10 continents of 25 × 25 fields, numbered like Tribal Wars': the tens digit
+        /// counts up the map, the units across it (K00 in the corner at 0|0, K55 in the middle).
+        /// </summary>
+        public const int ContinentSize = 25;
+
+        public static int ContinentOf(int x, int y) => Math.Max(0, Math.Min(9, y / ContinentSize)) * 10 + Math.Max(0, Math.Min(9, x / ContinentSize));
+
+        /// <summary>For example "K55".</summary>
+        public static string ContinentName(int x, int y) => $"K{ContinentOf(x, y):00}";
+
         /// <summary>Straight-line distance in map fields, as in Tribal Wars.</summary>
         public static double Distance(Village a, Village b)
         {
@@ -114,7 +162,7 @@ namespace MedievalWorldConquest.Simulation
         static readonly (BuildingType building, int cap, double weight)[] BarbarianGrowth =
         {
             (BuildingType.TimberCamp, 25, 3), (BuildingType.ClayPit, 25, 3), (BuildingType.IronMine, 25, 3),
-            (BuildingType.Warehouse, 22, 2), (BuildingType.Farm, 20, 2), (BuildingType.TownHall, 20, 1.5),
+            (BuildingType.Warehouse, 22, 2), (BuildingType.Farm, 20, 2), (BuildingType.Headquarters, 20, 1.5),
             (BuildingType.Barracks, 15, 1), (BuildingType.Wall, 15, 1), (BuildingType.Stable, 10, 0.5),
             (BuildingType.Workshop, 5, 0.25),
         };
@@ -171,7 +219,7 @@ namespace MedievalWorldConquest.Simulation
             int Roll(int min, double max) => rng.Next(min, Math.Max(min, (int)Math.Round(max)) + 1);
             double size = 2 + development * 8;
 
-            v.Levels[(int)BuildingType.TownHall] = Roll(1, size * 0.5);
+            v.Levels[(int)BuildingType.Headquarters] = Roll(1, size * 0.5);
             v.Levels[(int)BuildingType.TimberCamp] = Roll(1, size);
             v.Levels[(int)BuildingType.ClayPit] = Roll(1, size);
             v.Levels[(int)BuildingType.IronMine] = Roll(1, size);

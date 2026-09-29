@@ -8,9 +8,16 @@ namespace MedievalWorldConquest.Simulation
         Attack = 0,
         Support = 1,
         Return = 2,
+        /// <summary>Merchants carrying resources to another village (see <see cref="World.SendResources"/>).</summary>
+        Transport = 3,
+        /// <summary>Merchants going home, empty, after a delivery.</summary>
+        TransportReturn = 4,
     }
 
-    /// <summary>Troops on the march: an attack, support going to a village, or troops (and loot) heading home.</summary>
+    /// <summary>
+    /// Troops on the march (an attack, support going to a village, or troops and loot heading home), or merchants
+    /// on the road.
+    /// </summary>
     [Serializable]
     public class Command
     {
@@ -25,6 +32,10 @@ namespace MedievalWorldConquest.Simulation
         public Cost Loot;
         /// <summary>The building an attack's catapults aim at.</summary>
         public BuildingType CatapultTarget;
+        /// <summary>For merchants: how many are on the road (the goods they carry are in <see cref="Loot"/>).</summary>
+        public int Merchants;
+
+        public bool IsTrade => Kind == CommandKind.Transport || Kind == CommandKind.TransportReturn;
     }
 
     /// <summary>Troops from another village stationed in this one to help defend it.</summary>
@@ -83,6 +94,20 @@ namespace MedievalWorldConquest.Simulation
             return list;
         }
 
+        // Where each command is in the list, by id (not saved; rebuilt when first needed, or if the list changed
+        // behind its back), so an arriving army is found at once however many are on the move.
+        [NonSerialized] Dictionary<int, int> commandIndex;
+
+        Dictionary<int, int> CommandIndex()
+        {
+            if (commandIndex == null || commandIndex.Count != Commands.Count)
+            {
+                commandIndex = new Dictionary<int, int>(Commands.Count);
+                for (int i = 0; i < Commands.Count; i++) commandIndex[Commands[i].Id] = i;
+            }
+            return commandIndex;
+        }
+
         /// <summary>Population taken by a set of troops.</summary>
         public static int PopulationOf(int[] troops)
         {
@@ -133,7 +158,7 @@ namespace MedievalWorldConquest.Simulation
 
         /// <summary>Sends troops from a village's garrison. Returns the command, or null if the check failed.</summary>
         /// <param name="catapultTarget">The building an attack's catapults aim at.</param>
-        public Command Send(Village from, Village to, int[] troops, CommandKind kind, BuildingType catapultTarget = BuildingType.TownHall)
+        public Command Send(Village from, Village to, int[] troops, CommandKind kind, BuildingType catapultTarget = BuildingType.Headquarters)
         {
             if (kind == CommandKind.Return) throw new ArgumentException("Troops are sent home by recalling or after an attack.");
             var check = CheckSend(from, to, troops, kind);
@@ -165,6 +190,7 @@ namespace MedievalWorldConquest.Simulation
                 ArriveTime = Now + seconds,
                 Loot = loot,
             };
+            CommandIndex()[command.Id] = Commands.Count;
             Commands.Add(command);
             if (commandsByOwner != null) OwnCommands(ownerId).Add(command);
             Schedule(seconds, EventKind.CommandArrives, to.Id, command.Id);
@@ -202,9 +228,14 @@ namespace MedievalWorldConquest.Simulation
 
         void CommandArrives(ScheduledEvent e)
         {
-            var command = Commands.Find(c => c.Id == e.A);
-            if (command == null) return;
-            Commands.Remove(command);
+            if (!CommandIndex().TryGetValue(e.A, out int index)) return;
+            var command = Commands[index];
+            // Out of the list in one step: the last command takes its place (the list's order doesn't matter).
+            var last = Commands[Commands.Count - 1];
+            Commands[index] = last;
+            commandIndex[last.Id] = index;
+            Commands.RemoveAt(Commands.Count - 1);
+            commandIndex.Remove(command.Id);
             if (commandsByOwner != null) OwnCommands(command.OwnerId).Remove(command);
 
             var from = FindVillage(command.FromVillageId);
@@ -220,6 +251,10 @@ namespace MedievalWorldConquest.Simulation
                 case CommandKind.Return:
                     if (to != null) ComeHome(command, to);
                     break;
+                case CommandKind.Transport:
+                    if (to != null) Deliver(command, from, to);
+                    break;
+                // Merchants back home are simply free again.
             }
         }
 
@@ -243,9 +278,10 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>Troops (and any loot) arriving back at their home village.</summary>
         void ComeHome(Command command, Village home)
         {
+            // Home lost while they were away: the troops scatter (and were no longer counted against it).
+            if (home.OwnerId != command.OwnerId) return;
             Touch(home);
             home.AwayPopulation = Math.Max(0, home.AwayPopulation - PopulationOf(command.Troops));
-            if (home.OwnerId != command.OwnerId) return; // home lost while away: the troops scatter
 
             for (int i = 0; i < Units.Count; i++) home.Troops[i] += command.Troops[i];
             double cap = home.StorageCapacity;
@@ -255,14 +291,15 @@ namespace MedievalWorldConquest.Simulation
             home.Iron = Math.Max(home.Iron, Math.Min(cap, home.Iron + command.Loot.Iron));
         }
 
-        bool IsHuman(int playerId) => Players.Exists(p => p.Id == playerId && p.IsHuman);
+        bool IsHuman(int playerId) => FindPlayer(playerId)?.IsHuman == true;
 
         /// <summary>The luck of an attack: a repeatable value in ±<see cref="Battle.MaxLuck"/> from the world seed and the command.</summary>
         double LuckFor(Command command) => (Terrain.Hash(Settings.Seed ^ 0x2545F491, command.Id, 7) * 2 - 1) * Battle.MaxLuck;
 
         void ResolveAttack(Command command, Village attacker, Village target)
         {
-            Touch(target); // its stores as they are now, before looting
+            Touch(target); // its stores (and loyalty) as they are now, before looting
+            int defenderOwner = target.OwnerId; // it may change hands below
             // Everyone defending: the village's own troops plus any support stationed there.
             var defenders = (int[])target.Troops.Clone();
             foreach (var g in target.Supports)
@@ -298,6 +335,7 @@ namespace MedievalWorldConquest.Simulation
             target.Supports.RemoveAll(g => Total(g.Troops) == 0);
 
             // Rams' damage to the wall stands whatever the outcome.
+            if (result.WallAfter < target.Level(BuildingType.Wall)) ForgetPlanProgress(target);
             target.Levels[(int)BuildingType.Wall] = result.WallAfter;
 
             var report = new BattleReport
@@ -310,15 +348,19 @@ namespace MedievalWorldConquest.Simulation
                 DefenderTroops = defenders, DefenderLost = defenderLost,
                 WallBefore = result.WallBefore, WallAfter = result.WallAfter,
                 Scouted = result.Scouted,
+                AttackerPlayer = OwnerName(attacker), DefenderPlayer = OwnerName(target),
+                AttackerPlayerId = attacker.OwnerId, DefenderPlayerId = target.OwnerId,
             };
 
             var loot = default(Cost);
             if (result.AttackerWon)
             {
-                // The survivors fill their packs as far as the village's stock allows. What won't fit in their own
-                // warehouse when they get home is lost then, not left behind now.
+                // The survivors fill their packs as far as the village's stock allows, apart from what's in its
+                // hiding place. What won't fit in their own warehouse when they get home is lost then, not left
+                // behind now.
                 report.LootCapacity = Battle.CarryCapacity(survivors);
-                loot = Battle.Loot(report.LootCapacity, target.Wood, target.Clay, target.Iron);
+                int hidden = target.HiddenCapacity;
+                loot = Battle.Loot(report.LootCapacity, target.Wood - hidden, target.Clay - hidden, target.Iron - hidden);
                 target.Wood -= loot.Wood;
                 target.Clay -= loot.Clay;
                 target.Iron -= loot.Iron;
@@ -342,6 +384,7 @@ namespace MedievalWorldConquest.Simulation
                 report.CatapultAfter = Math.Max(Buildings.LowestLevel(hit), Battle.LevelAfterCatapults(report.CatapultBefore, catapults));
                 report.CatapultAfter = Math.Min(report.CatapultAfter, report.CatapultBefore);
                 target.Levels[(int)hit] = report.CatapultAfter;
+                ForgetPlanProgress(target); // its owner may need to rebuild it
                 // A smaller warehouse can't hold what the bigger one did.
                 double cap = target.StorageCapacity;
                 target.Wood = Math.Min(target.Wood, cap);
@@ -349,9 +392,19 @@ namespace MedievalWorldConquest.Simulation
                 target.Iron = Math.Min(target.Iron, cap);
             }
 
-            report.AttackerPlayer = OwnerName(attacker);
-            report.DefenderPlayer = OwnerName(target);
-            AiLearnFromBattle(command, target, result, defenders, defenderLost, Total(survivors) > 0, loot, report.LootCapacity);
+            // Noblemen who survived a victory sway the village, and may win it. If they do, the troops stay there and
+            // so does the loot: it's all theirs now.
+            bool conquered = result.AttackerWon && Sway(command, attacker, target, survivors, report);
+            if (conquered)
+            {
+                target.Wood += loot.Wood;
+                target.Clay += loot.Clay;
+                target.Iron += loot.Iron;
+                loot = default;
+                report.Loot = default;
+            }
+
+            AiLearnFromBattle(command, target, result, defenders, defenderLost, Total(survivors) > 0, loot, report.LootCapacity, report);
 
             // Reports for whoever's human: the attacker sees the defenders only if someone came back or scouts got through.
             if (IsHuman(command.OwnerId))
@@ -360,7 +413,7 @@ namespace MedievalWorldConquest.Simulation
                 report.DefenderVisible = Total(survivors) > 0 || result.Scouted;
                 AddReport(report);
             }
-            bool defenderHearsOfIt = IsHuman(target.OwnerId);
+            bool defenderHearsOfIt = IsHuman(defenderOwner);
             foreach (int owner in supportOwners)
                 if (owner != command.OwnerId && IsHuman(owner)) defenderHearsOfIt = true;
             if (defenderHearsOfIt)
@@ -371,7 +424,7 @@ namespace MedievalWorldConquest.Simulation
                 AddReport(defense);
             }
 
-            if (Total(survivors) > 0)
+            if (Total(survivors) > 0 && !conquered)
             {
                 var slowest = SlowestUnit(survivors).Value;
                 March(CommandKind.Return, command.OwnerId, target, attacker, survivors, loot, TravelSeconds(target, attacker, slowest));

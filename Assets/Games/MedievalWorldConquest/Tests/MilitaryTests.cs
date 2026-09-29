@@ -11,7 +11,9 @@ namespace MedievalWorldConquest.Tests
         {
             foreach (var u in Units.Definitions)
             {
-                Assert.Greater(Buildings.Get(u.Building).TrainingSpeedup, 1, $"{u.Name}'s building should train faster with levels");
+                // (The academy has only the one level.)
+                if (Buildings.Get(u.Building).MaxLevel > 1)
+                    Assert.Greater(Buildings.Get(u.Building).TrainingSpeedup, 1, $"{u.Name}'s building should train faster with levels");
                 Assert.Greater(u.Cost.Wood + u.Cost.Clay + u.Cost.Iron, 0, u.Name);
                 Assert.Greater(u.Cost.Population, 0, u.Name);
                 Assert.Greater(u.BaseSeconds, 0, u.Name);
@@ -20,12 +22,38 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
+        public void MountedArchersAttackAsArchersFromTheStable()
+        {
+            var ma = Units.Get(UnitType.MountedArcher);
+            Assert.AreEqual(UnitClass.Archer, ma.Class);
+            Assert.AreEqual(BuildingType.Stable, ma.Building);
+            Assert.AreEqual((250, 100, 150, 5), (ma.Cost.Wood, ma.Cost.Clay, ma.Cost.Iron, ma.Cost.Population));
+            Assert.AreEqual(120, ma.Attack);
+            Assert.AreEqual(Units.Count, Units.InDisplayOrder.Length, "every unit listed once");
+        }
+
+        [Test]
+        public void OlderSavesMakeRoomForTheMountedArcher()
+        {
+            var world = World.CreateNew(new WorldSettings { RivalDensity = 0 });
+            var v = world.PlayerVillage;
+            v.Troops = new int[10]; // as saved before the mounted archer
+            world.Commands.Add(new Command { Troops = new int[10] });
+            world.UpgradeFrom(12);
+            Assert.AreEqual(Units.Count, v.Troops.Length);
+            Assert.AreEqual(Units.Count, world.Commands[0].Troops.Length);
+        }
+
+        [Test]
         public void TrainedAtListsEachBuildingsUnits()
         {
             CollectionAssert.AreEqual(
                 new[] { UnitType.Spearman, UnitType.Swordsman, UnitType.Axeman, UnitType.Archer },
                 Array.ConvertAll(Units.TrainedAt(BuildingType.Barracks), u => u.Type));
-            Assert.AreEqual(3, Units.TrainedAt(BuildingType.Stable).Length);
+            // In Tribal Wars' order: the mounted archer comes between light and heavy cavalry.
+            CollectionAssert.AreEqual(
+                new[] { UnitType.Scout, UnitType.LightCavalry, UnitType.MountedArcher, UnitType.HeavyCavalry },
+                Array.ConvertAll(Units.TrainedAt(BuildingType.Stable), u => u.Type));
             Assert.AreEqual(2, Units.TrainedAt(BuildingType.Workshop).Length);
         }
 
@@ -34,23 +62,25 @@ namespace MedievalWorldConquest.Tests
         {
             double level1 = Units.SecondsToTrain(UnitType.Spearman, 1);
             double level11 = Units.SecondsToTrain(UnitType.Spearman, 11);
-            Assert.AreEqual(Units.Get(UnitType.Spearman).BaseSeconds, level1, 1e-9);
+            // Tribal Wars: 2/3 × build_time × 1.06^(−level). A spearman (build_time 1020) takes 641.5 s at barracks 1.
+            Assert.AreEqual(2.0 / 3.0 * 1020 / 1.06, level1, 1e-6);
             Assert.AreEqual(level1 / Math.Pow(1.06, 10), level11, 1e-6);
         }
     }
 
     public class RecruitmentTests
     {
-        /// <summary>A world whose village has a level-5 barracks, a big farm and plenty of resources.</summary>
+        /// <summary>A world whose village has a level-5 barracks, a big farm, plenty of resources and every unit researched.</summary>
         static World ArmedWorld(out Village v)
         {
             var world = World.CreateNew(new WorldSettings { Speed = 1f, Seed = 3 });
             v = world.PlayerVillage;
-            v.Levels[(int)BuildingType.TownHall] = 10;
+            v.Levels[(int)BuildingType.Headquarters] = 10;
             v.Levels[(int)BuildingType.Barracks] = 5;
             v.Levels[(int)BuildingType.Farm] = 20;
             v.Levels[(int)BuildingType.Warehouse] = 20;
             v.Wood = v.Clay = v.Iron = 50000;
+            for (int i = 0; i < Units.Count; i++) v.Research[i] = 1;
             return world;
         }
 
@@ -142,12 +172,12 @@ namespace MedievalWorldConquest.Tests
         {
             var world = ArmedWorld(out var v);
             v.Wood = 500; // 10 spearmen's worth of wood
-            Assert.AreEqual(10, World.MaxAffordable(v, UnitType.Spearman));
+            Assert.AreEqual(10, world.MaxAffordable(v, UnitType.Spearman));
 
             v.Wood = 50000;
             v.Levels[(int)BuildingType.Farm] = 1; // room for only a few dozen more people
             Assert.Less(v.FreePopulation, 1000);
-            Assert.AreEqual(v.FreePopulation, World.MaxAffordable(v, UnitType.Spearman), "with plenty of resources, the farm is the limit");
+            Assert.AreEqual(v.FreePopulation, world.MaxAffordable(v, UnitType.Spearman), "with plenty of resources, the farm is the limit");
         }
 
         [Test]
@@ -250,14 +280,14 @@ namespace MedievalWorldConquest.Tests
             var world = World.CreateNew(new WorldSettings());
             var v = world.PlayerVillage;
             v.Levels = new int[6]; // a version-2 village: six buildings
-            v.Levels[(int)BuildingType.TownHall] = 4;
+            v.Levels[(int)BuildingType.Headquarters] = 4;
             v.Troops = null;
             v.Recruitment = null;
 
             world.UpgradeFrom(2);
 
             Assert.AreEqual(Buildings.Count, v.Levels.Length);
-            Assert.AreEqual(4, v.Level(BuildingType.TownHall), "existing levels are kept");
+            Assert.AreEqual(4, v.Level(BuildingType.Headquarters), "existing levels are kept");
             Assert.AreEqual(0, v.Level(BuildingType.Barracks));
             Assert.AreEqual(Units.Count, v.Troops.Length);
             Assert.IsNotNull(v.Recruitment);

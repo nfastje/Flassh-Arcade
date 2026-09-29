@@ -18,7 +18,8 @@ namespace MedievalWorldConquest
 
         static readonly float[] Speeds = { 1f, 5f, 20f, 100f };
 
-        enum Tab { Village, Map, Army, Reports, Ranking }
+        /// <summary>What fills the screen below the top bar.</summary>
+        enum View { Village, Map, Reports, Ranking, Overview }
 
         /// <summary>Rival lord density choices: none, few, normal, many.</summary>
         static readonly float[] RivalDensities = { 0f, 0.5f, 1f, 2f };
@@ -28,14 +29,19 @@ namespace MedievalWorldConquest
         readonly VisualElement root;
         readonly Camera cam;
         VillagePanel villagePanel;
-        ArmyPanel armyPanel;
+        BuildingWindow buildingWindow;
         ReportsPanel reportsPanel;
         RankingPanel rankingPanel;
+        OverviewPanel overviewPanel;
         SendDialog sendDialog;
-        Label incomingWarning, protectionTag;
+        Label incomingWarning, unreadBadge;
+        Button previousVillage, nextVillage;
+        readonly Dictionary<View, Button> viewButtons = new Dictionary<View, Button>();
         public MapPanel Map { get; private set; }
-        Tab currentTab;
-        readonly Label[] resourceValues = new Label[3], resourceRates = new Label[3];
+        View currentView;
+        World lastWorld;
+        readonly Label[] resourceValues = new Label[3];
+        readonly VisualElement[] resourceChips = new VisualElement[3];
         Label storageValue, populationValue;
 
         // Start screen
@@ -45,6 +51,8 @@ namespace MedievalWorldConquest
         readonly List<Button> modeButtons = new List<Button>();
         readonly List<Button> rivalButtons = new List<Button>();
         readonly List<Button> skillButtons = new List<Button>();
+        readonly List<Button> nobleButtons = new List<Button>();
+        bool chosenCoins;
         float chosenSpeed = 5f;
         TimeMode chosenMode = TimeMode.RealTime;
         float chosenDensity = 1f;
@@ -52,25 +60,34 @@ namespace MedievalWorldConquest
         AiSkill chosenSkill = AiSkill.Normal;
 
         // In game
-        VisualElement hud, tabContent, menu, confirm;
-        Label playerName, villageName, villageInfo, clock, speedTag, toastLabel, confirmText;
+        VisualElement hud, menu, confirm;
+        Button playerName, villageName;
+        Label villageInfo, clock, speedTag, toastLabel, confirmText;
         VisualElement toast;
         Action confirmAction;
-        readonly Dictionary<Tab, Button> tabButtons = new Dictionary<Tab, Button>();
         float toastTime;
 
         public bool MenuOpen => menu.style.display == DisplayStyle.Flex;
-        public bool DialogOpen => confirm.style.display == DisplayStyle.Flex || sendDialog.IsOpen;
+        public bool DialogOpen => confirm.style.display == DisplayStyle.Flex || sendDialog.IsOpen || EndScreenOpen || buildingWindow.IsOpen;
 
-        /// <summary>Whether the Village tab is showing (the building list covers the right of the screen).</summary>
-        public bool VillageTabActive => hud.style.display == DisplayStyle.Flex && currentTab == Tab.Village;
+        /// <summary>Whether the victory or defeat screen is showing.</summary>
+        public bool EndScreenOpen => endScreen != null && endScreen.style.display == DisplayStyle.Flex;
 
-        /// <summary>Whether the Map tab is showing (the world map replaces the village view).</summary>
-        public bool MapTabActive => hud.style.display == DisplayStyle.Flex && currentTab == Tab.Map;
+        /// <summary>Whether the village view is showing (with its pane on the right).</summary>
+        public bool VillageTabActive => hud.style.display == DisplayStyle.Flex && currentView == View.Village;
 
-        public BuildingType? SelectedBuilding => villagePanel.Selected;
+        /// <summary>Whether the map is showing (it replaces the village view).</summary>
+        public bool MapTabActive => hud.style.display == DisplayStyle.Flex && currentView == View.Map;
 
-        public void SelectBuilding(BuildingType? type) => villagePanel.Select(type);
+        /// <summary>The building whose screen is open, to highlight it in the village.</summary>
+        public BuildingType? SelectedBuilding => buildingWindow.Building;
+
+        /// <summary>Closes any building screen (e.g. when switching villages).</summary>
+        public void SelectBuilding(BuildingType? type)
+        {
+            if (type.HasValue) OpenBuilding(type.Value);
+            else buildingWindow.Close();
+        }
 
         /// <summary>Whether a screen position (as from the Input System, origin bottom-left) is over clickable UI.</summary>
         public bool IsPointerOverUI(Vector2 screenPosition)
@@ -116,6 +133,7 @@ namespace MedievalWorldConquest
             root.Add(sendDialog.Root);
             BuildMenu();
             BuildConfirm();
+            BuildEndScreen();
             BuildToast();
         }
 
@@ -201,6 +219,16 @@ namespace MedievalWorldConquest
             }
             newGameSection.Add(rivalRow);
 
+            // How noblemen are paid for: a flat price, or Tribal Wars' gold coins (dearer with every conquest).
+            newGameSection.Add(Text("Noblemen", "body-text"));
+            var nobleRow = Element("option-row");
+            nobleButtons.Add(ButtonWith("Flat price\nEvery nobleman costs the same", () => ChooseCoins(false), "option", "option-wide"));
+            nobleButtons.Add(ButtonWith("Gold coins\nEach conquest makes the next dearer", () => ChooseCoins(true), "option", "option-wide"));
+            nobleButtons[0].userData = false;
+            nobleButtons[1].userData = true;
+            foreach (var b in nobleButtons) nobleRow.Add(b);
+            newGameSection.Add(nobleRow);
+
             var buttons = Element("option-row");
             buttons.style.marginTop = 12;
             buttons.Add(ButtonWith("Start New World", OnStartNewWorld, "btn"));
@@ -212,6 +240,13 @@ namespace MedievalWorldConquest
             ChooseMode(chosenMode);
             ChooseRivals(chosenDensity);
             ChooseSkill(chosenSkill);
+            ChooseCoins(chosenCoins);
+        }
+
+        void ChooseCoins(bool coins)
+        {
+            chosenCoins = coins;
+            foreach (var b in nobleButtons) b.EnableInClassList("option--selected", (bool)b.userData == coins);
         }
 
         void ChooseRivals(float density)
@@ -249,6 +284,7 @@ namespace MedievalWorldConquest
                 RivalDensity = chosenDensity,
                 RivalSkill = chosenSkill,
                 PlayerName = nameField.value,
+                GoldCoins = chosenCoins,
             };
             if (game.HasSave)
                 AskToConfirm("Starting a new world will replace your saved one. Continue?", () => game.StartNewWorld(settings));
@@ -271,7 +307,8 @@ namespace MedievalWorldConquest
                 int lords = saved.Players.FindAll(p => !p.IsHuman).Count;
                 continueSummary.text = $"{v?.Name ?? "Your village"}  ·  {World.FormatClock(saved.Now)}\n" +
                                        $"{SpeedText(saved.Settings.Speed)} speed  ·  {ModeText(saved.Settings.TimeMode)}  ·  " +
-                                       (saved.Settings.RivalDensity <= 0 && lords == 0 ? "no rivals" : $"{lords} rival lords so far ({saved.Settings.RivalSkill})");
+                                       (saved.Settings.RivalDensity <= 0 && lords == 0 ? "no rivals" : $"{lords} rival lords so far ({saved.Settings.RivalSkill})") +
+                                       (saved.Settings.GoldCoins ? "  ·  gold coins" : "");
             }
             loadError.text = error ?? "";
             Show(loadError, !string.IsNullOrEmpty(error));
@@ -285,44 +322,66 @@ namespace MedievalWorldConquest
             hud.pickingMode = PickingMode.Ignore;
             root.Add(hud);
 
+            // The top bar, as in Tribal Wars: the player and village names (the player's leads to their profile,
+            // the village's back to the village), the map, the resources, then reports and ranking, the clock and
+            // the menu. Everything but the names keeps its size; long names are cut short.
             var top = Element("top-bar");
-            // Who, which village, then where and how big.
-            // Stacked to save room in the bar: the player's name small above the village's line.
+            previousVillage = ButtonWith("<", () => game.CycleVillage(-1), "btn", "btn--small", "village-arrow");
+            top.Add(previousVillage);
             var title = Element("top-title");
-            playerName = Text("", "top-player");
+            playerName = ButtonWith("", () => { var human = lastWorld?.HumanPlayer; if (human != null) OpenPlayerInfo(human.Id); }, "top-link", "top-player");
+            playerName.tooltip = "Your profile";
             var line = Element("top-village-line");
-            villageName = Text("", "village-name");
+            villageName = ButtonWith("", () => ShowView(View.Village), "top-link", "village-name");
+            villageName.tooltip = "Back to the village";
             villageInfo = Text("", "top-info");
             line.Add(villageName);
             line.Add(villageInfo);
             title.Add(playerName);
             title.Add(line);
             top.Add(title);
+            nextVillage = ButtonWith(">", () => game.CycleVillage(1), "btn", "btn--small", "village-arrow");
+            top.Add(nextVillage);
+            viewButtons[View.Map] = IconButton(top, Icons.Map, "Map", () => ShowView(currentView == View.Map ? View.Village : View.Map));
+            viewButtons[View.Overview] = IconButton(top, null, "Villages", () => ShowView(currentView == View.Overview ? View.Village : View.Overview));
+            viewButtons[View.Overview].tooltip = "All your villages at a glance";
 
-            string[] names = { "Wood", "Clay", "Iron" };
-            for (int i = 0; i < names.Length; i++)
+            top.Add(Element("spacer"));
+            for (int i = 0; i < 3; i++)
             {
+                // Production per hour is in the tooltip (and the village pane), as in Tribal Wars, to keep the bar short.
                 var chip = Element("resource");
-                chip.Add(Text(names[i], "resource-name"));
+                chip.Add(Icons.Element(Icons.Resource((ResourceType)i), 20, "resource-icon"));
                 resourceValues[i] = Text("", "resource-value");
                 chip.Add(resourceValues[i]);
-                resourceRates[i] = Text("", "resource-rate");
-                chip.Add(resourceRates[i]);
+                resourceChips[i] = chip;
                 top.Add(chip);
             }
             var storage = Element("resource");
-            storage.Add(Text("Storage", "resource-name"));
+            storage.tooltip = "Warehouse capacity";
+            storage.Add(Icons.Element(Icons.Storage, 20, "resource-icon"));
             storageValue = Text("", "resource-value");
             storage.Add(storageValue);
             top.Add(storage);
             var population = Element("resource");
-            population.Add(Text("Population", "resource-name"));
+            population.tooltip = "Population (used / farm limit)";
+            population.Add(Icons.Element(Icons.Population, 20, "resource-icon"));
             populationValue = Text("", "resource-value");
             population.Add(populationValue);
             top.Add(population);
             incomingWarning = Text("", "incoming-warning");
             top.Add(incomingWarning);
             top.Add(Element("spacer"));
+
+            // Reports: a scroll with a little red count of the unread ones.
+            viewButtons[View.Reports] = IconButton(top, Icons.Reports, "", () => ShowView(currentView == View.Reports ? View.Village : View.Reports));
+            viewButtons[View.Reports].tooltip = "Reports";
+            unreadBadge = Text("", "unread-badge");
+            unreadBadge.pickingMode = PickingMode.Ignore;
+            viewButtons[View.Reports].Add(unreadBadge);
+            viewButtons[View.Ranking] = IconButton(top, Icons.Ranking, "", () => ShowView(currentView == View.Ranking ? View.Village : View.Ranking));
+            viewButtons[View.Ranking].tooltip = "Ranking";
+
             clock = Text("", "clock");
             speedTag = Text("", "speed-tag");
             top.Add(clock);
@@ -330,55 +389,140 @@ namespace MedievalWorldConquest
             top.Add(ButtonWith("Menu", ToggleMenu, "btn", "btn--small"));
             hud.Add(top);
 
-            tabContent = Element("tab-content");
-            tabContent.pickingMode = PickingMode.Ignore;
-            hud.Add(tabContent);
+            // Where player and village names lead when clicked.
+            links = new UiLinks
+            {
+                OpenVillage = OpenVillageInfo,
+                OpenPlayer = OpenPlayerInfo,
+                OpenReport = id =>
+                {
+                    ShowView(View.Reports);
+                    reportsPanel.Open(id);
+                },
+                ShowOnMap = id =>
+                {
+                    ShowView(View.Map);
+                    game.ShowOnMap(id);
+                },
+                SendTroops = id => sendDialog.Open(id),
+                SwitchTo = id => game.SelectVillage(id),
+                ShowInRanking = id =>
+                {
+                    CloseInfo();
+                    ShowView(View.Ranking);
+                    rankingPanel.ShowPlayer(id);
+                },
+                SendResources = id =>
+                {
+                    var target = lastWorld?.FindVillage(id);
+                    if (target == null) return;
+                    CloseInfo();
+                    ShowView(View.Village);
+                    buildingWindow.OpenMarketTo(target.X, target.Y);
+                },
+            };
 
             villagePanel = new VillagePanel(game, cam);
             hud.Add(villagePanel.Root);
-            armyPanel = new ArmyPanel(game);
-            hud.Add(armyPanel.Root);
-            Map = new MapPanel(game, targetId => sendDialog.Open(targetId));
+            Map = new MapPanel(game);
             hud.Add(Map.Root);
-            reportsPanel = new ReportsPanel(game);
+            reportsPanel = new ReportsPanel(game, links);
             hud.Add(reportsPanel.Root);
-            rankingPanel = new RankingPanel();
+            rankingPanel = new RankingPanel(links);
             hud.Add(rankingPanel.Root);
-
-            // Attacks on their way, along the bottom of the village view.
-            incomingPanel = Element("incoming-panel");
-            incomingPanel.style.right = VillagePanel.ListWidth + 12f;
-            incomingPanel.Add(Text("Incoming attacks", "row-title", "incoming-heading"));
-            incomingList = new ScrollView(ScrollViewMode.Vertical);
-            incomingList.AddToClassList("incoming-list");
-            incomingPanel.Add(incomingList);
-            hud.Add(incomingPanel);
-            Show(incomingPanel, false);
-
-            var tabs = Element("tab-bar");
-            foreach (Tab tab in Enum.GetValues(typeof(Tab)))
+            overviewPanel = new OverviewPanel(id =>
             {
-                var b = ButtonWith(tab.ToString(), () => SelectTab(tab), "tab");
-                tabButtons[tab] = b;
-                tabs.Add(b);
-            }
-            // Beginner protection's countdown sits in the tab bar's corner (the top bar is full).
-            protectionTag = Text("", "protection-tag");
-            tabs.Add(protectionTag);
-            hud.Add(tabs);
-            SelectTab(Tab.Village);
+                game.SelectVillage(id);
+                ShowView(View.Village);
+            });
+            hud.Add(overviewPanel.Root);
+
+            // Troop movements (attacks coming in, and the player's own going out and coming home), along the bottom
+            // of the village view.
+            movementsPanel = Element("incoming-panel");
+            movementsPanel.style.right = VillagePanel.PaneWidth + 12f;
+            movementsHeading = Text("Troop movements", "row-title", "incoming-heading");
+            movementsPanel.Add(movementsHeading);
+            movementsList = new ScrollView(ScrollViewMode.Vertical);
+            movementsList.AddToClassList("incoming-list");
+            movementsPanel.Add(movementsList);
+            hud.Add(movementsPanel);
+            Show(movementsPanel, false);
+
+            buildingWindow = new BuildingWindow(game, SendToField, links);
+            hud.Add(buildingWindow.Root);
+            villageWindow = new VillageWindow(links);
+            hud.Add(villageWindow.Root);
+            playerWindow = new PlayerWindow(links);
+            hud.Add(playerWindow.Root);
+            ShowView(View.Village);
         }
 
-        void SelectTab(Tab tab)
+        UiLinks links;
+        VillageWindow villageWindow;
+        PlayerWindow playerWindow;
+
+        /// <summary>Opens the window about a village (from the map, or a village's name anywhere).</summary>
+        public void OpenVillageInfo(int villageId)
         {
-            currentTab = tab;
-            foreach (var pair in tabButtons) pair.Value.EnableInClassList("tab--selected", pair.Key == tab);
-            tabContent.Clear();
-            Show(villagePanel.Root, tab == Tab.Village);
-            Show(armyPanel.Root, tab == Tab.Army);
-            Show(Map.Root, tab == Tab.Map);
-            Show(reportsPanel.Root, tab == Tab.Reports);
-            Show(rankingPanel.Root, tab == Tab.Ranking);
+            playerWindow.Close();
+            villageWindow.Open(villageId);
+        }
+
+        /// <summary>Opens a player's profile (from their name anywhere).</summary>
+        public void OpenPlayerInfo(int playerId)
+        {
+            villageWindow.Close();
+            playerWindow.Open(playerId);
+        }
+
+        /// <summary>Whether the village or player window is showing.</summary>
+        public bool InfoOpen => villageWindow.IsOpen || playerWindow.IsOpen;
+
+        /// <summary>Closes the village and player windows.</summary>
+        public void CloseInfo()
+        {
+            villageWindow.Close();
+            playerWindow.Close();
+        }
+
+        /// <summary>A top-bar button with an icon (and optional label).</summary>
+        static Button IconButton(VisualElement bar, UnityEngine.Texture2D icon, string label, Action onClick)
+        {
+            var b = new Button(onClick);
+            b.AddToClassList("icon-button");
+            if (icon != null) b.Add(Icons.Element(icon, 22));
+            if (!string.IsNullOrEmpty(label)) b.Add(Text(label, "icon-button-label"));
+            bar.Add(b);
+            return b;
+        }
+
+        /// <summary>Opens the send-troops dialog for the village on a map field, from the rally point. Returns whether there is one.</summary>
+        bool SendToField(int x, int y)
+        {
+            var target = lastWorld?.VillageAt(x, y);
+            if (target == null) return false;
+            sendDialog.Open(target.Id);
+            return true;
+        }
+
+        void ShowView(View view)
+        {
+            currentView = view;
+            foreach (var pair in viewButtons) pair.Value.EnableInClassList("icon-button--selected", pair.Key == view);
+            Show(villagePanel.Root, view == View.Village);
+            Show(Map.Root, view == View.Map);
+            Show(reportsPanel.Root, view == View.Reports);
+            Show(rankingPanel.Root, view == View.Ranking);
+            Show(overviewPanel.Root, view == View.Overview);
+            if (view != View.Village) buildingWindow.Close();
+        }
+
+        /// <summary>Opens a building's own screen in the village view.</summary>
+        public void OpenBuilding(BuildingType type)
+        {
+            ShowView(View.Village);
+            buildingWindow.Open(type);
         }
 
         public void ShowGame(World world)
@@ -386,20 +530,28 @@ namespace MedievalWorldConquest
             Show(startScreen, false);
             Show(hud, true);
             Show(menu, false);
-            SelectTab(Tab.Village);
+            ShowView(View.Village);
             Refresh(world);
         }
 
         /// <summary>Updates the HUD from the current world state. Cheap enough to call every frame.</summary>
         public void Refresh(World world)
         {
+            lastWorld = world;
             var v = world.PlayerVillage;
             if (v == null) return;
+            var own = world.HumanVillages();
+            int index = own.IndexOf(v);
             SetText(playerName, world.HumanPlayer?.Name ?? "");
             SetText(villageName, v.Name);
-            SetText(villageInfo, $"({v.X}|{v.Y}) · {v.Points:N0} pts");
+            SetText(villageInfo, v.Loyalty < World.MaxLoyalty
+                ? $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)} · loyalty {Math.Floor(v.Loyalty):0}"
+                : $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}");
+            villageInfo.tooltip = own.Count > 1 ? $"{v.Points:N0} points · village {index + 1} of {own.Count}" : $"{v.Points:N0} points";
+            Show(previousVillage, own.Count > 1);
+            Show(nextVillage, own.Count > 1);
             SetText(clock, World.FormatClock(world.Now));
-            SetText(speedTag, $"{SpeedText(world.Settings.Speed)} speed");
+            SetText(speedTag, SpeedText(world.Settings.Speed));
 
             int capacity = v.StorageCapacity;
             for (int i = 0; i < resourceValues.Length; i++)
@@ -408,7 +560,7 @@ namespace MedievalWorldConquest
                 double stock = v.Stock(r);
                 SetText(resourceValues[i], $"{Math.Floor(stock):N0}");
                 // Rates are per real hour, like every duration in the UI.
-                SetText(resourceRates[i], $"+{v.ProductionPerHour(r) * world.Settings.Speed:N0}/h");
+                resourceChips[i].tooltip = $"{r}: +{v.ProductionPerHour(r) * world.Settings.Speed:N0} per hour";
                 resourceValues[i].EnableInClassList("resource-value--full", stock >= capacity);
             }
             SetText(storageValue, $"{capacity:N0}");
@@ -417,60 +569,65 @@ namespace MedievalWorldConquest
             populationValue.EnableInClassList("resource-value--full", used >= cap);
 
             int unread = world.UnreadReports;
-            SetText(tabButtons[Tab.Reports], unread > 0 ? $"Reports ({unread})" : "Reports");
+            Show(unreadBadge, unread > 0);
+            SetText(unreadBadge, unread > 99 ? "99+" : unread.ToString());
 
-            // The banner up top counts the attacks heading for the player; the village tab lists them, soonest first.
+            // The banner up top counts the attacks heading for the player; the village view lists them, soonest first.
             var incoming = world.HumanPlayer != null ? world.IncomingAttacks(world.HumanPlayer.Id) : new List<Command>();
             Show(incomingWarning, incoming.Count > 0);
-            if (incoming.Count > 0) SetText(incomingWarning, $"Incoming attacks: {incoming.Count}");
-            Show(incomingPanel, incoming.Count > 0 && VillageTabActive);
+            if (incoming.Count > 0) SetText(incomingWarning, $"{incoming.Count} incoming");
+            var moving = TrackedMovements(world);
+            Show(movementsPanel, moving.Count > 0 && VillageTabActive && !buildingWindow.IsOpen);
+            if (moving.Count > 0 && VillageTabActive) RefreshMovements(world, moving, incoming.Count);
+            villageWindow.Refresh(world);
+            playerWindow.Refresh(world);
 
-            // While the player is still under beginner protection, say for how long.
-            var human = world.HumanPlayer;
-            bool protectedNow = human != null && world.IsProtected(human.Id);
-            Show(protectionTag, protectedNow && world.Players.Count > 1);
-            if (protectedNow) SetText(protectionTag, $"Protected: {Real(world, human.ProtectedUntil - world.Now)}");
-            if (incoming.Count > 0 && VillageTabActive) RefreshIncoming(world, incoming);
-
-            if (VillageTabActive) villagePanel.Refresh(world, v);
-            else if (currentTab == Tab.Army) armyPanel.Refresh(world, v);
-            else if (currentTab == Tab.Map) Map.Refresh(world);
-            else if (currentTab == Tab.Reports) reportsPanel.Refresh(world);
-            else if (currentTab == Tab.Ranking) rankingPanel.Refresh(world);
+            if (VillageTabActive)
+            {
+                villagePanel.Refresh(world, v);
+                buildingWindow.Refresh(world, v);
+            }
+            else if (currentView == View.Map) Map.Refresh(world);
+            else if (currentView == View.Reports) reportsPanel.Refresh(world);
+            else if (currentView == View.Ranking) rankingPanel.Refresh(world);
+            else if (currentView == View.Overview) overviewPanel.Refresh(world);
             sendDialog.Refresh(world);
         }
 
-        VisualElement incomingPanel;
-        ScrollView incomingList;
-        string incomingSignature;
+        VisualElement movementsPanel;
+        Label movementsHeading;
+        ScrollView movementsList;
+        readonly List<MovementRow> movementRows = new List<MovementRow>();
 
-        /// <summary>One line per incoming attack, soonest first; rebuilt when attacks come or go, countdowns updated in place.</summary>
-        void RefreshIncoming(World world, List<Command> incoming)
+        /// <summary>
+        /// What the village view's movement list tracks, soonest first: attacks coming in, and the player's own
+        /// attacks going out and troops coming home (support and the rest are at the rally point).
+        /// </summary>
+        static List<Command> TrackedMovements(World world)
         {
-            string signature = string.Join(",", incoming.ConvertAll(c => c.Id.ToString()));
-            if (signature != incomingSignature)
-            {
-                incomingSignature = signature;
-                incomingList.Clear();
-                foreach (var c in incoming)
-                {
-                    var line = Element("row-header", "incoming-line");
-                    line.Add(Text("", "row-info", "incoming-from"));
-                    line.Add(Text("", "row-title", "incoming-time"));
-                    incomingList.Add(line);
-                }
-            }
+            var human = world.HumanPlayer;
+            if (human == null) return new List<Command>();
+            var list = world.IncomingAttacks(human.Id);
+            foreach (var c in world.CommandsOf(human.Id))
+                if (c.Kind == CommandKind.Attack || c.Kind == CommandKind.Return) list.Add(c);
+            list.Sort((a, b) => a.ArriveTime.CompareTo(b.ArriveTime));
+            return list;
+        }
 
-            for (int i = 0; i < incoming.Count && i < incomingList.childCount; i++)
+        /// <summary>One row per movement, with links to the villages and players involved; rows are reused.</summary>
+        void RefreshMovements(World world, List<Command> moving, int incoming)
+        {
+            SetText(movementsHeading, incoming > 0 ? $"Troop movements  ·  {incoming} incoming" : "Troop movements");
+            while (movementRows.Count < moving.Count)
             {
-                var c = incoming[i];
-                var line = incomingList[i];
-                var origin = world.FindVillage(c.FromVillageId);
-                var target = world.FindVillage(c.ToVillageId);
-                string lord = origin != null ? world.OwnerName(origin) : "?";
-                SetText(line.Q<Label>(className: "incoming-from"),
-                    $"{lord}, from {origin?.Name} ({origin?.X}|{origin?.Y}) to {target?.Name}  ·  arrives {World.FormatClock(c.ArriveTime)}");
-                SetText(line.Q<Label>(className: "incoming-time"), Real(world, Math.Max(0, c.ArriveTime - world.Now)));
+                var row = new MovementRow(links);
+                movementRows.Add(row);
+                movementsList.Add(row.Root);
+            }
+            for (int i = 0; i < movementRows.Count; i++)
+            {
+                Show(movementRows[i].Root, i < moving.Count);
+                if (i < moving.Count) movementRows[i].Update(world, moving[i]);
             }
         }
 
@@ -487,6 +644,10 @@ namespace MedievalWorldConquest
                 game.SaveWorld();
                 ShowToast("Game saved.");
             }, "btn"));
+            Button sound = null;
+            sound = ButtonWith(game.SoundOn ? "Sound: On" : "Sound: Off", () => sound.text = game.ToggleSound() ? "Sound: On" : "Sound: Off", "btn");
+            // (Only once there are sounds to switch: see GameAudio.)
+            if (game.HasSounds) panel.Add(sound);
             panel.Add(ButtonWith("Main Menu", () => game.LeaveToArcade(), "btn"));
             menu.Add(panel);
             root.Add(menu);
@@ -524,9 +685,62 @@ namespace MedievalWorldConquest
 
         public void CloseDialog()
         {
-            Show(confirm, false);
-            sendDialog.Close();
+            // The top-most first: the send dialog can sit over a building's screen.
+            if (confirm.style.display == DisplayStyle.Flex) Show(confirm, false);
+            else if (sendDialog.IsOpen) sendDialog.Close();
+            else if (buildingWindow.IsOpen) buildingWindow.Close();
+            else CloseInfo();
         }
+
+        // ---------------------------------------------------------------- victory and defeat
+
+        VisualElement endScreen;
+        Label endTitle, endText;
+        Button endFirst, endSecond;
+        Action endFirstAction, endSecondAction;
+
+        void BuildEndScreen()
+        {
+            endScreen = Element("screen", "centered", "dim");
+            var panel = Element("panel", "end-panel");
+            endTitle = Text("", "title");
+            endText = Text("", "body-text");
+            panel.Add(endTitle);
+            panel.Add(endText);
+            var row = Element("option-row");
+            row.style.marginTop = 14;
+            endFirst = ButtonWith("", () => { Show(endScreen, false); endFirstAction?.Invoke(); }, "btn");
+            endSecond = ButtonWith("", () => { Show(endScreen, false); endSecondAction?.Invoke(); }, "btn");
+            row.Add(endFirst);
+            row.Add(endSecond);
+            panel.Add(row);
+            endScreen.Add(panel);
+            root.Add(endScreen);
+            Show(endScreen, false);
+        }
+
+        void ShowEndScreen(string title, string text, string first, Action onFirst, string second, Action onSecond)
+        {
+            endTitle.text = title;
+            endText.text = text;
+            endFirst.text = first;
+            endSecond.text = second;
+            endFirstAction = onFirst;
+            endSecondAction = onSecond;
+            Show(endScreen, true);
+        }
+
+        /// <summary>The player reached the conquest goal.</summary>
+        public void ShowVictory(World world) => ShowEndScreen("VICTORY",
+            $"You rule {world.HumanVillages().Count:N0} of the {world.LordVillageCount:N0} villages held by lords ({world.HumanShare:P0}), " +
+            $"past the {world.Settings.ConquestGoal:P0} you needed. The realm is yours!\nYou can keep playing this world as long as you like.",
+            "Keep Playing", null, "Main Menu", () => game.LeaveToArcade());
+
+        /// <summary>The player lost their last village.</summary>
+        public void ShowDefeat(World world) => ShowEndScreen("DEFEATED",
+            "Your last village has fallen. But a lord is more than their lands: start again with a new village on the " +
+            "frontier of the realm, under fresh beginner protection.",
+            "Rebuild on the Frontier", () => game.RespawnPlayer(), "Main Menu", () => game.LeaveToArcade());
 
         void BuildToast()
         {

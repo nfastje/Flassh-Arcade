@@ -16,6 +16,18 @@ namespace MedievalWorldConquest.Simulation
         Balanced = 3,
         /// <summary>Big offensive armies with siege engines; attacks players often.</summary>
         Warlord = 4,
+        /// <summary>
+        /// A newcomer who barely knows how to play: slow to act, few troops, never attacks. Early-game prey, and if
+        /// raided often enough in a short time, gives up and leaves a barbarian village behind.
+        /// </summary>
+        Noob = 5,
+        /// <summary>
+        /// A player who has stopped playing: their village builds itself up at random to a set size (as if they
+        /// played a little before leaving), then stays as it is. It never takes turns, so it costs next to nothing
+        /// to run, but it fills the map. Two weeks after it stops, the player is gone for good and the village goes
+        /// barbarian, as Tribal Wars closes inactive accounts.
+        /// </summary>
+        Inactive = 6,
     }
 
     /// <summary>What a rival lord remembers about one village it has raided, scouted or attacked.</summary>
@@ -32,6 +44,14 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>The defenders (and wall) seen then.</summary>
         public int[] SeenTroops;
         public int SeenWall;
+        /// <summary>
+        /// When the lord last had an idea of the village's plunder (its scouts counted it, or a raid emptied it or
+        /// came back full), or -1 if never; and how much could be carried off then, apart from what's hidden.
+        /// </summary>
+        public double LootSeenAt = -1;
+        public int LootWood, LootClay, LootIron;
+        /// <summary>The building levels its scouts last saw (for the mines, warehouse and hiding place), or null.</summary>
+        public int[] SeenLevels;
     }
 
     /// <summary>A player's standing in the rankings.</summary>
@@ -56,18 +76,24 @@ namespace MedievalWorldConquest.Simulation
         public const double RingSpread = 4;
         /// <summary>Game hours between the circle's steps outward.</summary>
         public const double GrowthIntervalHours = 2;
-        /// <summary>On average one barbarian village per this many fields of settled land, and one lord per this many (at normal density).</summary>
-        public const double FieldsPerBarbarian = 40, FieldsPerLord = 300;
-        /// <summary>Lords already settled round the starting circle when a world begins (at normal density).</summary>
-        public const int InitialLords = 4;
+        /// <summary>On average one new village (a lord's or a barbarian one) per this many fields of settled land.</summary>
+        public const double FieldsPerSettlement = 40;
+        /// <summary>
+        /// Of the lords who settle, the share who are regular players (a Raider, Defender, Balanced or Warlord);
+        /// the rest are noobs. Barbarians are rare at first: most barbarian villages are left behind by noobs who quit.
+        /// </summary>
+        public const double RegularLordShare = 0.35;
+        /// <summary>Regular lords already settled round the starting circle when a world begins (at normal density), and how close they may be to the player.</summary>
+        public const int InitialLords = 3;
+        public const double InitialLordMinDistance = 10;
         /// <summary>The circle stops growing once it covers the whole map, corners included.</summary>
         public static double MaxSpawnRadius => MapSize / 2.0 * 1.42;
 
         /// <summary>How far out from the centre villages have appeared so far.</summary>
         public double SpawnRadius;
-        /// <summary>Fractions of a village owed by the circle's growth so far (so small steps still add up).</summary>
-        public double BarbarianBacklog, LordBacklog;
-        public int GrowthTicks, LordsSpawned, NextVillageId;
+        /// <summary>The fraction of a village owed by the circle's growth so far (so small steps still add up).</summary>
+        public double SettlementBacklog;
+        public int GrowthTicks, LordsSpawned, RegularsSpawned, NextVillageId;
 
         static readonly string[] LordNames =
         {
@@ -101,7 +127,19 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>When the beginner protection given at the start of a new world runs out.</summary>
         public double ProtectionEnd => StartTime + Settings.ProtectionDays * SecondsPerDay;
 
-        public Player FindPlayer(int id) => Players.Find(p => p.Id == id);
+        // Players by id, built when first needed (not saved). Players are only ever added, so the index is rebuilt
+        // whenever the list has grown.
+        [NonSerialized] Dictionary<int, Player> playersById;
+
+        public Player FindPlayer(int id)
+        {
+            if (playersById == null || playersById.Count != Players.Count)
+            {
+                playersById = new Dictionary<int, Player>(Players.Count);
+                foreach (var p in Players) playersById[p.Id] = p;
+            }
+            return playersById.TryGetValue(id, out var player) ? player : null;
+        }
 
         /// <summary>Whether a player's villages are still under beginner protection.</summary>
         public bool IsProtected(int playerId)
@@ -109,6 +147,9 @@ namespace MedievalWorldConquest.Simulation
             var p = FindPlayer(playerId);
             return p != null && Now < p.ProtectedUntil;
         }
+
+        /// <summary>The share of new villages that are lords' rather than barbarian: 90% at normal density.</summary>
+        double LordShare => Math.Min(0.95, 0.9 * Math.Max(0, Settings.RivalDensity));
 
         /// <summary>The name of a village's owner, for display.</summary>
         public string OwnerName(Village v) => v.IsBarbarian ? "Barbarians" : FindPlayer(v.OwnerId)?.Name ?? "Unknown";
@@ -125,7 +166,8 @@ namespace MedievalWorldConquest.Simulation
         public List<Ranking> Rankings()
         {
             var byId = new Dictionary<int, Ranking>();
-            foreach (var p in Players) byId[p.Id] = new Ranking { Player = p };
+            foreach (var p in Players)
+                if (!p.Quit) byId[p.Id] = new Ranking { Player = p };
             foreach (var v in Villages)
                 if (byId.TryGetValue(v.OwnerId, out var r))
                 {
@@ -141,18 +183,31 @@ namespace MedievalWorldConquest.Simulation
         // ---------------------------------------------------------------- the growing world
 
         /// <summary>
-        /// Fills the starting circle round the player's village with barbarians and settles the first lords round
-        /// its edge, then sets the circle growing.
+        /// Fills the starting circle round the player's village with newcomers (mostly noobs, the odd barbarian
+        /// village), then settles a few regular lords round its edge, not right next to the player, and sets the
+        /// circle growing.
         /// </summary>
         void SettleStartingArea()
         {
             var rng = new Random(Settings.Seed * 7 + 3);
             GrowTo(StartRadius, fillDisk: true);
-            int wanted = Settings.RivalDensity <= 0 ? 0 : Math.Max(1, (int)Math.Round(InitialLords * Settings.RivalDensity));
-            for (int i = LordsSpawned; i < wanted; i++)
-                if (TryFindSpot(rng, () => StartRadius + (rng.NextDouble() * 2 - 1) * RingSpread, out int x, out int y))
-                    SpawnLord(x, y, rng);
+            if (Settings.RivalDensity <= 0) return;
+            int wanted = Math.Max(1, Math.Min(5, (int)Math.Round(InitialLords * Settings.RivalDensity)));
+            var centre = MapSize / 2.0;
+            for (int i = 0; i < wanted; i++)
+                if (TryFindSpot(rng, () => InitialLordMinDistance + rng.NextDouble() * (StartRadius + RingSpread - InitialLordMinDistance), out int x, out int y))
+                    SpawnLord(x, y, rng, RegularPersonality());
         }
+
+        /// <summary>
+        /// How far a noob gets before it stops growing, from a random number 0..1: most stall small (stage 5, the
+        /// least, is about 150 points and just gets a barracks; stage 9 about 230; stage 19 about 800), and one in
+        /// ten never stops, just grows slowly.
+        /// </summary>
+        public static int NoobStageCap(double r) => r >= 0.9 ? PlanStages : 5 + (int)(14 * Math.Pow(r / 0.9, 1.5));
+
+        /// <summary>The next regular personality in turn, so each kind turns up about as often as the others.</summary>
+        AiPersonality RegularPersonality() => (AiPersonality)(1 + (RegularsSpawned++ + (Settings.Seed & 3)) % 4);
 
         void ScheduleWorldGrowth() => Schedule(GrowthIntervalHours * 3600, EventKind.WorldGrowth);
 
@@ -175,20 +230,25 @@ namespace MedievalWorldConquest.Simulation
             double old = SpawnRadius;
             if (radius <= old) return;
             double area = Math.PI * (radius * radius - old * old);
-            BarbarianBacklog += area / FieldsPerBarbarian;
-            LordBacklog += area * Math.Max(0, Settings.RivalDensity) / FieldsPerLord;
+            SettlementBacklog += area / FieldsPerSettlement;
             SpawnRadius = radius;
 
             var rng = GrowthRng();
-            Func<double> barbarianRadius = fillDisk
+            Func<double> where = fillDisk
                 ? (Func<double>)(() => radius * Math.Sqrt(rng.NextDouble()))
                 : () => radius + (rng.NextDouble() * 2 - 1) * RingSpread;
-            Func<double> lordRadius = () => radius + (rng.NextDouble() * 2 - 1) * RingSpread;
 
-            for (; BarbarianBacklog >= 1; BarbarianBacklog--)
-                if (TryFindSpot(rng, barbarianRadius, out int x, out int y)) SpawnBarbarian(x, y, rng);
-            for (; LordBacklog >= 1; LordBacklog--)
-                if (TryFindSpot(rng, lordRadius, out int x, out int y)) SpawnLord(x, y, rng);
+            // Each new village is a lord's (mostly noobs, some regular players) or, now and then, a barbarian one.
+            // Right round the player at the start they're all noobs: the regular lords there are placed separately,
+            // at a distance.
+            for (; SettlementBacklog >= 1; SettlementBacklog--)
+            {
+                if (!TryFindSpot(rng, where, out int x, out int y)) continue;
+                if (rng.NextDouble() >= LordShare) SpawnBarbarian(x, y, rng);
+                else SpawnLord(x, y, rng, !fillDisk && rng.NextDouble() < RegularLordShare ? RegularPersonality() : AiPersonality.Noob);
+            }
+            // Between them, inactive players and more barbarians.
+            FillIn(area, rng, where);
         }
 
         /// <summary>
@@ -226,23 +286,30 @@ namespace MedievalWorldConquest.Simulation
             ScheduleBarbarianGrowth(village);
         }
 
-        /// <summary>A new rival lord settles a new village, with a fresh spell of beginner protection.</summary>
-        void SpawnLord(int x, int y, Random rng)
+        /// <summary>A new computer player (a lord, or an inactive player), with a fresh spell of beginner protection.</summary>
+        Player NewPlayer(AiPersonality personality, Random rng)
         {
             int id = 0;
             foreach (var p in Players) id = Math.Max(id, p.Id + 1);
-            var lord = new Player
+            var player = new Player
             {
                 Id = id,
                 Name = NewLordName(rng),
                 IsHuman = false,
-                Personality = (AiPersonality)(1 + (LordsSpawned + (Settings.Seed & 3)) % 4),
+                Personality = personality,
                 ColorIndex = LordsSpawned,
                 ProtectedUntil = Now + Settings.ProtectionDays * SecondsPerDay,
             };
-            Players.Add(lord);
+            Players.Add(player);
             LordsSpawned++;
+            return player;
+        }
 
+        /// <summary>A new rival lord settles a new village, with a fresh spell of beginner protection.</summary>
+        void SpawnLord(int x, int y, Random rng, AiPersonality personality)
+        {
+            var lord = NewPlayer(personality, rng);
+            if (personality == AiPersonality.Noob) lord.StageCap = NoobStageCap(rng.NextDouble());
             var village = new Village { Id = NewVillageId(), Name = NewPlaceName(rng), X = x, Y = y, OwnerId = lord.Id };
             village.SetUpAsNew();
             AddVillage(village);
@@ -250,23 +317,41 @@ namespace MedievalWorldConquest.Simulation
             ScheduleAiThink(lord, 60 + rng.NextDouble() * 600);
         }
 
+        static readonly string[] PlaceQualifiers =
+        {
+            "Upper", "Lower", "Great", "Little", "East", "West", "North", "South", "Old", "New", "Far", "Nether",
+        };
+
+        // Names in use, so thousands of players and villages can each get their own quickly (not saved; rebuilt
+        // when first needed).
+        [NonSerialized] HashSet<string> playerNames, placeNames;
+
         string NewLordName(Random rng)
         {
-            for (int attempt = 0; attempt < 30; attempt++)
+            if (playerNames == null) playerNames = new HashSet<string>(Players.ConvertAll(p => p.Name));
+            for (int attempt = 0; attempt < 60; attempt++)
             {
-                string name = $"{LordNames[rng.Next(LordNames.Length)]} {Epithets[rng.Next(Epithets.Length)]}";
-                if (!Players.Exists(p => p.Name == name)) return name;
+                string first = LordNames[rng.Next(LordNames.Length)];
+                // "Aldric the Bold" at first; once those run short, "Aldric of Crowhurst" too.
+                string name = attempt < 20
+                    ? $"{first} {Epithets[rng.Next(Epithets.Length)]}"
+                    : $"{first} of {PlacePrefixes[rng.Next(PlacePrefixes.Length)]}{PlaceSuffixes[rng.Next(PlaceSuffixes.Length)]}";
+                if (playerNames.Add(name)) return name;
             }
-            return $"{LordNames[rng.Next(LordNames.Length)]} the {LordsSpawned + 1}th";
+            string fallback = $"{LordNames[rng.Next(LordNames.Length)]} the {LordsSpawned + 1}th";
+            playerNames.Add(fallback);
+            return fallback;
         }
 
-        /// <summary>A village name not yet used in this world, like "Crowhurst" or "Stonebrook".</summary>
+        /// <summary>A village name not yet used in this world, like "Crowhurst", "Stonebrook" or "Little Ashford".</summary>
         public string NewPlaceName(Random rng)
         {
-            for (int attempt = 0; attempt < 30; attempt++)
+            if (placeNames == null) placeNames = new HashSet<string>(Villages.ConvertAll(v => v.Name));
+            for (int attempt = 0; attempt < 60; attempt++)
             {
                 string name = PlacePrefixes[rng.Next(PlacePrefixes.Length)] + PlaceSuffixes[rng.Next(PlaceSuffixes.Length)];
-                if (!Villages.Exists(v => v.Name == name)) return name;
+                if (attempt >= 20) name = $"{PlaceQualifiers[rng.Next(PlaceQualifiers.Length)]} {name}";
+                if (placeNames.Add(name)) return name;
             }
             return $"New {PlacePrefixes[rng.Next(PlacePrefixes.Length)]}{PlaceSuffixes[rng.Next(PlaceSuffixes.Length)]}";
         }

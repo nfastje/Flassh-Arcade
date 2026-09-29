@@ -11,7 +11,8 @@ namespace MedievalWorldConquest.Tests
         static World NewWorld(float density = 1f, AiSkill skill = AiSkill.Normal, int seed = 1234) =>
             World.CreateNew(new WorldSettings { Seed = seed, Speed = 1f, RivalDensity = density, RivalSkill = skill, PlayerName = "Tester" });
 
-        static List<Player> Lords(World world) => world.Players.Where(p => !p.IsHuman).ToList();
+        /// <summary>The computer players who play (not the inactive ones).</summary>
+        static List<Player> Lords(World world) => world.Players.Where(p => !p.IsHuman && p.Personality != AiPersonality.Inactive).ToList();
 
         static Village HomeOf(World world, Player p) => world.Villages.First(v => v.OwnerId == p.Id);
 
@@ -26,18 +27,90 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void TheFirstLordsSettleRoundTheStartingCircle()
+        public void AWorldStartsWithMostlyNoobsAFewRegularLordsAndHardlyAnyBarbarians()
         {
             var world = NewWorld();
             var lords = Lords(world);
-            Assert.GreaterOrEqual(lords.Count, World.InitialLords);
+            var regulars = lords.Where(p => p.Personality != AiPersonality.Noob).ToList();
+            Assert.Greater(lords.Count(p => p.Personality == AiPersonality.Noob), regulars.Count, "mostly noobs");
+            Assert.AreEqual(World.InitialLords, regulars.Count, "a few regular lords");
+            Assert.Less(world.Villages.Count(v => v.IsBarbarian), lords.Count, "fewer barbarians than lords");
             Assert.AreEqual(lords.Count, lords.Select(p => p.Name).Distinct().Count(), "every lord has its own name");
-            Assert.AreEqual(4, lords.Take(4).Select(p => p.Personality).Distinct().Count(), "the first four have all four personalities");
             foreach (var p in lords)
                 Assert.LessOrEqual(FromCentre(HomeOf(world, p)), World.StartRadius + World.RingSpread + 1);
+            // The regular lords placed at the start keep their distance from the player.
+            foreach (var p in regulars)
+                Assert.GreaterOrEqual(World.Distance(world.PlayerVillage, HomeOf(world, p)), World.InitialLordMinDistance - 0.5);
 
             var villages = world.Villages.Where(v => !v.IsBarbarian).ToList();
             Assert.AreEqual(villages.Count, villages.Select(v => v.Name).Distinct().Count(), "every village has its own name");
+        }
+
+        [Test]
+        public void ANoobBeatenTooOftenGivesUpAndLeavesABarbarianVillage()
+        {
+            var world = NewWorld();
+            foreach (var p in world.Players) p.ProtectedUntil = 0;
+            var noob = Lords(world).First(p => p.Personality == AiPersonality.Noob);
+            var village = HomeOf(world, noob);
+            village.Troops[(int)UnitType.Spearman] = 5;
+            var home = world.PlayerVillage;
+            home.Levels[(int)BuildingType.Farm] = 20;
+            home.Troops[(int)UnitType.Axeman] = 300;
+
+            for (int i = 0; i < World.NoobQuitHits; i++)
+            {
+                Assert.IsFalse(noob.Quit, $"still playing after {i} defeats");
+                var army = new int[Units.Count];
+                army[(int)UnitType.Axeman] = 50;
+                var attack = world.Send(home, village, army, CommandKind.Attack);
+                world.AdvanceTo(attack.ArriveTime);
+            }
+
+            Assert.IsTrue(noob.Quit);
+            Assert.IsTrue(village.IsBarbarian);
+            Assert.AreEqual(World.BarbarianName, village.Name);
+            Assert.IsFalse(world.Rankings().Any(r => r.Player == noob), "quitters leave the rankings");
+            Assert.IsTrue(world.Events.Pending.Any(e => e.Kind == EventKind.BarbarianGrowth && e.VillageId == village.Id), "and it grows like any barbarian village");
+        }
+
+        [Test]
+        public void AQuittersVillageKeepsTheTroopsItHad()
+        {
+            var world = NewWorld();
+            var noob = Lords(world).First(p => p.Personality == AiPersonality.Noob);
+            var village = HomeOf(world, noob);
+            village.Troops[(int)UnitType.Swordsman] = 40;
+            world.QuitLord(noob);
+            Assert.AreEqual(40, village.TroopCount(UnitType.Swordsman));
+            world.AdvanceTo(world.Now + World.SecondsPerDay);
+            Assert.AreEqual(40, village.TroopCount(UnitType.Swordsman), "barbarians keep them, but never train more");
+        }
+
+        [Test]
+        public void ANoobHitOnlyNowAndThenKeepsPlaying()
+        {
+            var world = NewWorld();
+            foreach (var p in world.Players) p.ProtectedUntil = 0;
+            var noob = Lords(world).First(p => p.Personality == AiPersonality.Noob);
+            var village = HomeOf(world, noob);
+            var home = world.PlayerVillage;
+            home.Levels[(int)BuildingType.Farm] = 20;
+            home.Troops[(int)UnitType.Axeman] = 300;
+
+            void Hit()
+            {
+                var army = new int[Units.Count];
+                army[(int)UnitType.Axeman] = 50;
+                var attack = world.Send(home, village, army, CommandKind.Attack);
+                world.AdvanceTo(attack.ArriveTime);
+            }
+
+            for (int i = 0; i < World.NoobQuitHits - 1; i++) Hit();
+            // Long enough for those defeats to be forgotten...
+            world.AdvanceTo(world.Now + (World.NoobQuitWindowHours + 1) * 3600);
+            Hit();
+            Assert.IsFalse(noob.Quit, "...so one more doesn't break them");
         }
 
         [Test]
@@ -88,8 +161,10 @@ namespace MedievalWorldConquest.Tests
             army[(int)UnitType.Spearman] = 5;
             Assert.AreEqual(SendStatus.TargetProtected, world.CheckSend(home, HomeOf(world, lord), army, CommandKind.Attack).Status);
             Assert.AreEqual(SendStatus.Ok, world.CheckSend(home, HomeOf(world, lord), army, CommandKind.Support).Status);
-            var barbarian = world.Villages.First(v => v.IsBarbarian);
-            Assert.AreEqual(SendStatus.Ok, world.CheckSend(home, barbarian, army, CommandKind.Attack).Status);
+            var noob = Lords(world).First(p => p.Personality == AiPersonality.Noob && p != lord);
+            var abandoned = HomeOf(world, noob);
+            world.QuitLord(noob); // a barbarian village to try
+            Assert.AreEqual(SendStatus.Ok, world.CheckSend(home, abandoned, army, CommandKind.Attack).Status);
 
             world.AdvanceTo(world.ProtectionEnd + 1);
             Assert.IsFalse(world.IsProtected(lord.Id));
@@ -116,7 +191,8 @@ namespace MedievalWorldConquest.Tests
             foreach (var lord in first)
             {
                 var v = HomeOf(world, lord);
-                Assert.Greater(v.Points, 80, $"{lord.Name} ({lord.Personality}) should have grown");
+                // (Some noobs stop very small, by design.)
+                Assert.Greater(v.Points, lord.Personality == AiPersonality.Noob ? 50 : 80, $"{lord.Name} ({lord.Personality}) should have grown");
                 Assert.Greater(v.Level(BuildingType.Barracks), 0, $"{lord.Name} should have a barracks");
                 Assert.Greater(lord.SpentOnTroops, 0, $"{lord.Name} should have trained troops");
                 Assert.LessOrEqual(v.PopulationUsed, v.PopulationCapacity, "lords keep to the farm's limit like anyone");
@@ -148,7 +224,7 @@ namespace MedievalWorldConquest.Tests
             camp.Levels[(int)BuildingType.Barracks] = 5;
             camp.Levels[(int)BuildingType.Farm] = 20;
             camp.Troops[(int)UnitType.Axeman] = 400;
-            foreach (var other in Lords(world).Where(p => p != lord)) other.ProtectedUntil = double.MaxValue;
+            foreach (var other in world.Players.Where(p => !p.IsHuman && p != lord)) other.ProtectedUntil = double.MaxValue;
 
             world.AdvanceTo(world.ProtectionEnd + 12 * 3600);
 
