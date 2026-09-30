@@ -67,7 +67,7 @@ namespace MedievalWorldConquest
         // In game
         VisualElement hud, menu, confirm;
         Button playerName, villageName;
-        Label villageInfo, clock, speedTag, toastLabel, confirmText;
+        Label villageInfo, clock, toastLabel, confirmText;
         VisualElement toast;
         Action confirmAction;
         float toastTime;
@@ -86,13 +86,6 @@ namespace MedievalWorldConquest
 
         /// <summary>The building whose screen is open, to highlight it in the village.</summary>
         public BuildingType? SelectedBuilding => buildingWindow.Highlight;
-
-        /// <summary>Closes any building screen (e.g. when switching villages).</summary>
-        public void SelectBuilding(BuildingType? type)
-        {
-            if (type.HasValue) OpenBuilding(type.Value);
-            else buildingWindow.Close();
-        }
 
         /// <summary>Whether a screen position (as from the Input System, origin bottom-left) is over clickable UI.</summary>
         public bool IsPointerOverUI(Vector2 screenPosition)
@@ -396,7 +389,6 @@ namespace MedievalWorldConquest
             playerName.tooltip = "Your profile";
             nav.Add(playerName);
             clock = Text("", "clock");
-            speedTag = Text("", "speed-tag");
             nav.Add(clock);
             nav.Add(ButtonWith("Menu", ToggleMenu, "btn", "btn--small"));
             top.Add(nav);
@@ -633,7 +625,6 @@ namespace MedievalWorldConquest
             // The world's speed is in the clock's tooltip, to leave the bar's room for the names.
             SetText(clock, World.FormatClock(world.Now));
             clock.tooltip = $"World speed {SpeedText(world.Settings.Speed)}";
-            SetText(speedTag, SpeedText(world.Settings.Speed));
 
             int capacity = v.StorageCapacity;
             for (int i = 0; i < resourceValues.Length; i++)

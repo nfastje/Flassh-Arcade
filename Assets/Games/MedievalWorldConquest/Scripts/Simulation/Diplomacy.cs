@@ -1464,11 +1464,6 @@ namespace MedievalWorldConquest.Simulation
             return best;
         }
 
-        /// <summary>
-        /// The human's best standing towards the goal: alone, or (on a diplomacy world) with their tribe and its
-        /// allies. They win on whichever comes first.
-        /// </summary>
-        public double HumanBestShare => Math.Max(HumanShare, Diplomacy ? BlocShare(TribeOf(HumanPlayer)) : 0);
 
         /// <summary>
         /// Game days a side must hold the conquest goal to win a diplomacy world, as in Tribal Wars' dominance

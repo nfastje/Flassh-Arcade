@@ -203,7 +203,6 @@ namespace MedievalWorldConquest.Simulation
             GrowTo(StartRadius, fillDisk: true);
             if (Settings.RivalDensity <= 0) return;
             int wanted = Math.Max(1, Math.Min(5, (int)Math.Round(InitialLords * Settings.RivalDensity)));
-            var center = MapSize / 2.0;
             for (int i = 0; i < wanted; i++)
                 if (TryFindSpot(rng, () => InitialLordMinDistance + rng.NextDouble() * (StartRadius + RingSpread - InitialLordMinDistance), out int x, out int y))
                     SpawnLord(x, y, rng, RegularPersonality());

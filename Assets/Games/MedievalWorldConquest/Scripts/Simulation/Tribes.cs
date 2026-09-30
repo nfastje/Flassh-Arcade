@@ -98,45 +98,23 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>The most members a tribe takes. (A tuning knob for now, while the endgame is being balanced.)</summary>
         public static int MaxTribeMembers = 20;
 
-        /// <summary>
-        /// Whether a whole network of allies (allies of allies too) counts as one bloc for winning the world, rather
-        /// than just a tribe and its own allies. On: with at most two alliances a tribe, networks form real sides.
-        /// </summary>
-        public static bool AllianceNetworks;
-
         /// <summary>The most alliances a tribe may have (user's choice: two); non-aggression pacts are unlimited.</summary>
         public static int MaxAlliances = 2;
 
+        /// <summary>Whether two tribes may ally: each has room for another alliance.</summary>
+        public bool CanAlly(Tribe a, Tribe b) =>
+            a != null && b != null && a != b && AlliesOf(a).Count < MaxAlliances && AlliesOf(b).Count < MaxAlliances;
+
         /// <summary>
-        /// With alliance networks: tribes won't ally if the network they'd form would hold more than this share of the
-        /// players' villages. (A tuning knob for now; 1 is no limit.)
+        /// The tribes that win (or lose) together with a tribe: it and its direct allies. (Allies of allies fight
+        /// alongside, but don't share the win.)
         /// </summary>
-        public static double MaxNetworkToJoin = 1;
-
-        /// <summary>Whether two tribes may ally: each has room for another alliance, and together they'd not make too big a network.</summary>
-        public bool CanAlly(Tribe a, Tribe b)
-        {
-            if (a == null || b == null || a == b) return false;
-            if (AlliesOf(a).Count >= MaxAlliances || AlliesOf(b).Count >= MaxAlliances) return false;
-            if (AllianceNetworks && MaxNetworkToJoin < 1)
-            {
-                var joined = BlocOf(a);
-                joined.UnionWith(BlocOf(b));
-                if (ShareOf(joined) > MaxNetworkToJoin) return false;
-            }
-            return true;
-        }
-
-        /// <summary>The tribes that win (or lose) together with a tribe: it and its allies, or its whole alliance network.</summary>
         public HashSet<int> BlocOf(Tribe t)
         {
             var bloc = new HashSet<int>();
             if (t == null) return bloc;
             bloc.Add(t.Id);
-            var frontier = new List<Tribe> { t };
-            for (int i = 0; i < frontier.Count; i++)
-                foreach (var ally in AlliesOf(frontier[i]))
-                    if (bloc.Add(ally.Id) && AllianceNetworks) frontier.Add(ally);
+            foreach (var ally in AlliesOf(t)) bloc.Add(ally.Id);
             return bloc;
         }
 

@@ -969,8 +969,7 @@ namespace MedievalWorldConquest.Simulation
 
         // ---------------------------------------------------------------- conquest
 
-        /// <summary>How far (in fields) lords send noblemen, and how many they gather before sending them.</summary>
-        public const double AiConquestRange = 15;
+        /// <summary>How many noblemen lords gather before sending them (how far they send them is <see cref="ConquestRangeOf"/>).</summary>
         public const int AiNoblesWanted = 4, AiNoblesWantedWithCoins = 2;
 
         /// <summary>

@@ -69,13 +69,6 @@
     margin-bottom: 8px;
 }
 
-.divider {
-    height: 2px;
-    width: 100%;
-    background-color: rgba(122, 90, 51, 0.4);
-    margin: 14px 0;
-}
-
 /* ---------------------------------------------------------------- buttons */
 
 .btn {
@@ -267,12 +260,6 @@
     margin-right: 4px;
 }
 
-.resource-name {
-    font-size: 13px;
-    color: rgb(200, 180, 140);
-    margin-right: 6px;
-}
-
 .resource-value {
     font-size: 15px;
     -unity-font-style: bold;
@@ -298,14 +285,6 @@
     flex-shrink: 0;
     white-space: nowrap;
 }
-
-.speed-tag {
-    font-size: 13px;
-    color: rgb(200, 180, 140);
-    margin-right: 8px;
-    flex-shrink: 0;
-}
-
 
 /* Top-bar buttons with an icon: the map, reports and ranking. */
 .icon-button {
@@ -361,21 +340,6 @@
 .resource-icon {
     margin-right: 5px;
 }
-.note {
-    position: absolute;
-    left: 16px;
-    bottom: 16px;
-    background-color: rgba(241, 227, 195, 0.92);
-    border-width: 2px;
-    border-color: rgb(122, 90, 51);
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: rgb(58, 42, 24);
-    font-size: 14px;
-    max-width: 340px;
-    white-space: normal;
-}
-
 /* ---------------------------------------------------------------- village tab */
 
 .detail-effect {
@@ -384,10 +348,6 @@
     color: rgb(60, 95, 35);
     white-space: normal;
     margin-top: 4px;
-}
-
-.build-list {
-    flex-grow: 1;
 }
 
 .build-row {
@@ -401,11 +361,6 @@
 
 .build-row:hover {
     background-color: rgba(255, 255, 255, 0.55);
-}
-
-.build-row--selected {
-    border-color: rgb(192, 140, 40);
-    background-color: rgba(255, 236, 170, 0.6);
 }
 
 .row-header {
@@ -568,10 +523,6 @@
     background-color: rgb(241, 227, 195);
     padding: 10px 14px;
 }
-.garrison-line {
-    padding: 2px 0;
-}
-
 .garrison-count {
     font-size: 15px;
     -unity-font-style: bold;
@@ -603,15 +554,6 @@
     margin: 0 3px 0 0;
     padding: 0 6px;
     font-size: 13px;
-}
-
-.unit-count {
-    min-width: 52px;
-    font-size: 16px;
-    -unity-font-style: bold;
-    -unity-text-align: middle-center;
-    color: rgb(58, 42, 24);
-    margin-right: 3px;
 }
 
 .recruit-btn {
@@ -850,25 +792,6 @@
     min-height: 60px;
 }
 
-.movement {
-    border-left-width: 4px;
-    border-color: rgb(110, 150, 60);
-}
-
-.movement--incoming {
-    border-color: rgb(170, 45, 30);
-    background-color: rgba(220, 120, 100, 0.35);
-}
-
-.movement--incoming .movement-title {
-    color: rgb(150, 30, 20);
-}
-
-.movement-title {
-    font-size: 13px;
-    white-space: normal;
-}
-
 .incoming-warning {
     background-color: rgb(150, 35, 22);
     border-width: 2px;
@@ -903,28 +826,6 @@
 
 .incoming-list {
     flex-shrink: 1;
-}
-
-.incoming-line {
-    padding: 2px 0;
-    border-top-width: 1px;
-    border-color: rgba(122, 90, 51, 0.25);
-}
-
-.incoming-from {
-    flex-shrink: 1;
-    margin-top: 0;
-    margin-right: 10px;
-}
-
-.incoming-time {
-    color: rgb(150, 30, 20);
-}
-
-.option-label {
-    margin: 0 4px 0 18px;
-    -unity-text-align: middle-center;
-    align-self: center;
 }
 
 /* ---------------------------------------------------------------- ranking tab */
@@ -1064,10 +965,6 @@
 
 .send-name {
     width: 140px;
-}
-
-.send-available {
-    width: 90px;
 }
 
 /* How many of a unit to send: a box to type in, then "(how many are home)" to send them all, and "none". */
@@ -1903,29 +1800,6 @@
 /* No units of that kind at home: a faint 0. */
 .overview-zero {
     color: rgba(58, 42, 24, 0.3);
-}
-
-.overview-troops {
-    flex-grow: 1;
-    flex-shrink: 1;
-    padding-left: 6px;
-}
-
-/* The troops at home: unit icons with counts, wrapping onto a second line if there are many kinds. */
-.overview-troop-list {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-}
-
-.overview-unit {
-    flex-direction: row;
-    align-items: center;
-    margin-right: 8px;
-}
-
-.overview-unit > .cost-icon {
-    margin-right: 2px;
 }
 
 /* Headings get the rows' cell style; keep their own weight and color. */

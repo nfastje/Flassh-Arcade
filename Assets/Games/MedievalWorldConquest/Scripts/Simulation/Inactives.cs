@@ -43,8 +43,6 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>Inactive players come with rival lords: none without them, and more (or fewer) with the density setting.</summary>
         double InactiveShare => Math.Min(2, Math.Max(0, Settings.RivalDensity));
 
-        public bool IsInactive(int playerId) => FindPlayer(playerId)?.Personality == AiPersonality.Inactive;
-
         /// <summary>
         /// Adds the inactive players' and extra barbarian villages owed for newly settled land (an area of
         /// <paramref name="area"/> fields), placed where <paramref name="where"/> says.
