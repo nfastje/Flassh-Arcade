@@ -151,18 +151,51 @@
 
 /* ---------------------------------------------------------------- in-game HUD */
 
+/* The top bar: two rows, as in Tribal Wars. 84px in all (the pages below start there). */
 .top-bar {
     position: absolute;
     left: 0;
     right: 0;
     top: 0;
-    height: 52px;
-    flex-direction: row;
-    align-items: center;
-    padding: 0 14px;
+    height: 84px;
+    flex-direction: column;
     background-color: rgb(59, 42, 26);
     border-bottom-width: 3px;
     border-color: rgb(140, 105, 50);
+}
+
+.top-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 12px;
+    flex-shrink: 0;
+}
+
+/* Above: the tabs, the player's name, the clock and the menu. */
+.top-row--nav {
+    height: 41px;
+    background-color: rgb(44, 31, 18);
+    border-bottom-width: 1px;
+    border-color: rgba(140, 105, 50, 0.6);
+}
+
+/* Below: the village and its resources. */
+.top-row--village {
+    height: 40px;
+}
+
+.top-row > .btn,
+.top-row > .spacer {
+    flex-shrink: 0;
+}
+
+.top-row--nav > .icon-button {
+    height: 32px;
+    padding: 2px 8px 2px 5px;
+}
+
+.top-row--nav .icon-button-label {
+    font-size: 14px;
 }
 
 .village-arrow {
@@ -178,22 +211,10 @@
     max-width: 620px;
 }
 
-/* The player's name (to their profile) above the village's (back to the village view). The only part of the
-   bar that gives way when space is short: long names are cut off with an ellipsis. */
-.top-title {
-    justify-content: center;
-    align-items: flex-start;
-    margin: 0 6px 0 2px;
-    flex-shrink: 1;
-    min-width: 60px;
-    max-width: 260px;
-    overflow: hidden;
-}
-
-.top-village-line {
-    flex-direction: row;
-    align-items: flex-end;
-    max-width: 100%;
+/* The winning tribes and top ten lords when a world ends. */
+.end-standings {
+    max-height: 360px;
+    margin-top: 8px;
 }
 
 /* Top-bar names are plain text that underlines, a little darker, under the pointer. */
@@ -214,20 +235,24 @@
 }
 
 .top-player {
-    font-size: 12px;
+    font-size: 14px;
+    -unity-font-style: bold;
     color: rgb(200, 180, 140);
+    margin-right: 10px;
+    flex-shrink: 1;
 }
 
 .village-name {
     font-size: 18px;
     -unity-font-style: bold;
     color: rgb(232, 200, 114);
-    margin-right: 8px;
+    margin: 0 4px;
 }
 
 .top-info {
-    font-size: 13px;
+    font-size: 14px;
     color: rgb(200, 180, 140);
+    margin-left: 6px;
     flex-shrink: 0;
     white-space: nowrap;
 }
@@ -238,8 +263,8 @@
     flex-shrink: 0;
     background-color: rgba(0, 0, 0, 0.25);
     border-radius: 5px;
-    padding: 3px 8px;
-    margin-right: 6px;
+    padding: 3px 6px;
+    margin-right: 4px;
 }
 
 .resource-name {
@@ -281,10 +306,6 @@
     flex-shrink: 0;
 }
 
-.top-bar > .btn,
-.top-bar > .spacer {
-    flex-shrink: 0;
-}
 
 /* Top-bar buttons with an icon: the map, reports and ranking. */
 .icon-button {
@@ -294,10 +315,10 @@
     border-width: 2px;
     border-color: rgb(110, 80, 40);
     border-radius: 6px;
-    padding: 2px 8px;
-    margin: 0 4px;
+    padding: 2px 6px;
+    margin: 0 3px;
     height: 36px;
-    min-width: 40px;
+    min-width: 38px;
     flex-shrink: 0;
     justify-content: center;
     overflow: visible;
@@ -431,6 +452,36 @@
     margin-bottom: 6px;
 }
 
+/* A slot in the headquarters' construction queue: always the same height, used or not. */
+.queue-slot {
+    flex-direction: row;
+    align-items: center;
+    height: 46px;
+    margin-bottom: 4px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.35);
+    flex-shrink: 0;
+}
+
+.queue-slot--empty {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.queue-slot--empty .row-title {
+    color: rgb(130, 108, 80);
+    -unity-font-style: italic;
+}
+
+.queue-slot-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.queue-cancel {
+    margin: 0 0 0 10px;
+}
+
 .progress {
     height: 8px;
     background-color: rgba(0, 0, 0, 0.18);
@@ -490,7 +541,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    top: 55px;
+    top: 84px;
     bottom: 0;
     flex-direction: row;
     background-color: rgb(241, 227, 195);
@@ -617,8 +668,148 @@
 }
 
 .name-field {
+    width: 240px;
+    margin: 4px;
+}
+
+/* Text boxes (the player's name, the village's): parchment-colored, dark text, tall enough to read. */
+.name-field,
+.rename-field {
+    height: 34px;
+    flex-shrink: 0;
+}
+
+/* Number boxes (coordinates, amounts): the same readable style, a little shorter. */
+.coord-field,
+.amount-field {
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.name-field > .unity-base-text-field__input,
+.rename-field > .unity-base-text-field__input,
+.coord-field > .unity-base-text-field__input,
+.amount-field > .unity-base-text-field__input {
+    background-color: rgb(252, 245, 228);
+    border-width: 2px;
+    border-color: rgb(160, 126, 82);
+    border-radius: 4px;
+    padding: 2px 8px;
+    -unity-text-align: middle-left;
+}
+
+.name-field .unity-text-element,
+.rename-field .unity-text-element,
+.coord-field .unity-text-element,
+.amount-field .unity-text-element {
+    color: rgb(58, 42, 24);
+    font-size: 16px;
+}
+
+/* The start screen's save slots: cards side by side, all as tall as the tallest (the row stretches them), each
+   with its text above and its buttons along the bottom, level across the cards. */
+.slot-row {
+    flex-direction: row;
+    justify-content: center;
+    align-items: stretch;
+    flex-shrink: 0;
+}
+
+.slot-card {
+    width: 290px;
+    min-height: 200px;
+    margin: 6px;
+    padding: 10px 12px;
+    background-color: rgba(255, 255, 255, 0.35);
+    border-width: 2px;
+    border-color: rgb(160, 126, 82);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.slot-title {
+    font-size: 18px;
+    margin-bottom: 4px;
+}
+
+.slot-body {
+    flex-grow: 1;
+    flex-shrink: 0;
+    margin-bottom: 8px;
+}
+
+.slot-body > * {
+    flex-shrink: 0;
+}
+
+.slot-line {
+    font-size: 14px;
+    color: rgb(58, 42, 24);
+    white-space: normal;
+    margin-bottom: 2px;
+}
+
+.slot-line--strong {
+    -unity-font-style: bold;
+}
+
+.slot-line--faint {
+    color: rgb(130, 108, 80);
+    -unity-font-style: italic;
+}
+
+.slot-actions {
+    flex-direction: row;
+    justify-content: flex-start;
+    flex-shrink: 0;
+}
+
+.slot-delete {
+    background-color: rgb(140, 60, 40);
+}
+
+/* The new-world screen: one row per setting, all on one page. */
+.new-world-panel {
+    align-items: stretch;
+    width: 720px;
+}
+
+.new-world-panel > .title {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.new-world-panel > .option-row {
+    justify-content: center;
+}
+
+.setting-row {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    margin: 3px 0;
+    flex-shrink: 0;
+}
+
+.setting-label {
+    width: 130px;
+    flex-shrink: 0;
+    margin-right: 10px;
+    -unity-text-align: middle-right;
+    -unity-font-style: bold;
+}
+
+.setting-options {
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex-grow: 1;
+    flex-shrink: 1;
+    align-items: center;
+}
+
+.setting-options > .option-wide {
     width: 220px;
-    margin: 0;
+    font-size: 14px;
 }
 
 .legend-swatch {
@@ -725,8 +916,28 @@
     width: 620px;
 }
 
+/* Only the list gives way when space is short: the heading, summary, switches and pager keep their size. */
+.ranking-column > * {
+    flex-shrink: 0;
+}
+
+.ranking-column > .ranking-list,
+.ranking-column > .stats {
+    flex-shrink: 1;
+    min-height: 0;
+}
+
 .ranking-list {
     flex-grow: 1;
+}
+
+/* Three lines, always: the rows below never move with its length. */
+.ranking-summary {
+    height: 66px;
+    margin-top: 6px;
+    overflow: hidden;
+    white-space: normal;
+    -unity-text-align: upper-left;
 }
 
 .ranking-row {
@@ -776,6 +987,33 @@
     font-size: 15px;
     color: rgb(58, 42, 24);
     -unity-text-align: middle-right;
+}
+
+/* Statistics (in the Ranking tab). */
+.stats {
+    flex-grow: 1;
+}
+
+.stats > * {
+    flex-shrink: 0;
+}
+
+.stats > .ranking-list {
+    flex-shrink: 1;
+    min-height: 0;
+}
+
+.stats-heading {
+    margin-top: 12px;
+    margin-bottom: 2px;
+}
+
+.stats-wide {
+    width: 150px;
+}
+
+.stats-day {
+    width: 110px;
 }
 
 /* ---------------------------------------------------------------- send troops dialog */
@@ -963,7 +1201,7 @@
 
 .toast {
     position: absolute;
-    top: 66px;
+    top: 96px;
     left: 0;
     right: 0;
     align-items: center;
@@ -989,7 +1227,7 @@
 .village-pane {
     position: absolute;
     right: 0;
-    top: 55px;
+    top: 84px;
     bottom: 0;
     padding: 10px 10px;
     background-color: rgba(241, 227, 195, 0.97);
@@ -1212,18 +1450,52 @@
     margin: 0 8px 0 2px;
 }
 
-.resource-choice {
-    width: 80px;
-    margin: 0 8px 0 2px;
+/* The offer form's rows: a fixed-width label, the amount, then the resource buttons. */
+.offer-row {
+    margin-top: 4px;
 }
 
-.offer-row {
-    flex-wrap: wrap;
-    margin-top: 2px;
+.offer-label {
+    width: 52px;
 }
 
 .offer-row > .coord-field {
-    width: 64px;
+    width: 80px;
+    margin: 0 8px 0 0;
+}
+
+/* A resource to choose: its icon and name. */
+.resource-pick {
+    flex-direction: row;
+    align-items: center;
+    background-color: rgb(226, 206, 166);
+    border-width: 2px;
+    border-color: rgb(160, 126, 82);
+    border-radius: 5px;
+    padding: 2px 8px 2px 4px;
+    margin: 0 4px 0 0;
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.resource-pick:hover {
+    background-color: rgb(236, 219, 184);
+}
+
+.resource-pick--selected {
+    background-color: rgb(139, 90, 43);
+    border-color: rgb(84, 52, 22);
+}
+
+.resource-pick-label {
+    font-size: 14px;
+    color: rgb(58, 42, 24);
+    margin: 0 0 0 2px;
+    padding: 0;
+}
+
+.resource-pick--selected .resource-pick-label {
+    color: rgb(250, 238, 212);
 }
 /* ---------------------------------------------------------------- links, village and player windows */
 
@@ -1244,7 +1516,7 @@
 }
 
 /* Under the pointer a name or link turns a few shades darker and underlines: no box behind it, and no bold.
-   (Specific enough to win over the theme's grey hover and press styles for buttons.) */
+   (Specific enough to win over the theme's gray hover and press styles for buttons.) */
 .link.unity-button:hover:enabled,
 .link.unity-button:active:enabled,
 .top-link.unity-button:hover:enabled,
@@ -1306,7 +1578,7 @@
 .info-window {
     position: absolute;
     right: 12px;
-    top: 64px;
+    top: 94px;
     width: 420px;
     max-height: 82%;
     align-items: stretch;
@@ -1488,4 +1760,46 @@
     background-color: rgb(150, 35, 22);
     border-radius: 4px;
     -unity-font-style: bold;
+}
+
+/* ---------------------------------------------------------------- tribes and messages */
+
+.tribe-found {
+    margin-top: 6px;
+}
+
+.tribe-found-row {
+    padding: 6px 8px;
+    flex-wrap: wrap;
+}
+
+.relation-label {
+    margin: 0 8px;
+    -unity-font-style: bold;
+}
+
+.relation-ally {
+    color: rgb(20, 130, 130);
+}
+
+.relation-pact {
+    color: rgb(120, 60, 160);
+}
+
+.relation-enemy {
+    color: rgb(170, 30, 20);
+}
+
+.relation-none {
+    color: rgb(110, 84, 54);
+}
+
+.message-body {
+    -unity-text-align: upper-left;
+    max-width: 700px;
+    margin: 10px 0;
+}
+
+.map-color-btn {
+    margin: 0 0 6px 0;
 }

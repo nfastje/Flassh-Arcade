@@ -14,13 +14,13 @@ namespace MedievalWorldConquest
         public static readonly Vector2 Origin = new Vector2(1000f, 0f);
         const int PixelsPerField = 6;
 
-        // Tribal Wars' map colours: your villages yellow, barbarians grey, everyone else in their own colours.
+        // Tribal Wars' map colors: your villages yellow, barbarians gray, everyone else in their own colors.
         public static readonly Color PlayerColor = new Color(1f, 0.86f, 0.12f);
         /// <summary>The village the player is viewing from: white, as in Tribal Wars (their other villages are yellow).</summary>
         public static readonly Color CurrentVillageColor = Color.white;
         public static readonly Color BarbarianColor = new Color(0.62f, 0.62f, 0.62f);
 
-        /// <summary>Each rival lord's colour (by <see cref="Player.ColorIndex"/>): none of them yellow or grey.</summary>
+        /// <summary>Each rival lord's color (by <see cref="Player.ColorIndex"/>): none of them yellow or gray.</summary>
         public static readonly Color[] RivalColors =
         {
             new Color(0.88f, 0.22f, 0.18f), new Color(0.35f, 0.62f, 1f), new Color(0.62f, 0.35f, 0.85f),
@@ -45,14 +45,53 @@ namespace MedievalWorldConquest
             return tier;
         }
 
-        /// <summary>The colour a village's marker has: blue for the player's, beige for barbarians, the lord's own for rivals.</summary>
+        // Tribal Wars' tribe colors: your tribe blue, allies turquoise, pacts purple, enemies red, the tribeless brown.
+        public static readonly Color TribeMateColor = new Color(0.2f, 0.45f, 1f);
+        public static readonly Color AllyColor = new Color(0.2f, 0.85f, 0.85f);
+        public static readonly Color PactColor = new Color(0.7f, 0.35f, 0.9f);
+        public static readonly Color EnemyColor = new Color(0.9f, 0.12f, 0.08f);
+        public static readonly Color TribelessColor = new Color(0.55f, 0.4f, 0.25f);
+
+        /// <summary>On a diplomacy world, whether the map colors villages by tribe (as Tribal Wars does) rather than by player.</summary>
+        public static bool ColorByTribe = true;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetColorMode() => ColorByTribe = true;
+
+        /// <summary>
+        /// The color a village's marker has: the player's yellow (white for the one they're viewing from),
+        /// barbarians gray, and everyone else either in their own color or, on a diplomacy world, by how their tribe
+        /// stands with the player's.
+        /// </summary>
         public static Color OwnerColor(World world, Village v)
         {
             if (v.IsBarbarian) return BarbarianColor;
             var owner = world.FindPlayer(v.OwnerId);
             if (owner == null) return BarbarianColor;
             if (owner.IsHuman) return v == world.PlayerVillage ? CurrentVillageColor : PlayerColor;
+            if (world.Diplomacy && ColorByTribe)
+            {
+                var theirs = world.TribeOf(owner);
+                if (theirs == null) return TribelessColor;
+                var mine = world.TribeOf(world.HumanPlayer);
+                if (mine == theirs) return TribeMateColor;
+                switch (world.Relation(mine, theirs))
+                {
+                    case RelationKind.Ally: return AllyColor;
+                    case RelationKind.NonAggression: return PactColor;
+                    case RelationKind.Enemy: return EnemyColor;
+                }
+                return TribeColor(theirs);
+            }
             return RivalColors[owner.ColorIndex % RivalColors.Length];
+        }
+
+        /// <summary>A tribe's own color, for tribes the player has no dealings with (never one of the relation colors).</summary>
+        public static Color TribeColor(Tribe t)
+        {
+            var c = RivalColors[t.ColorIndex % RivalColors.Length];
+            // Keep clear of the relation colors: soften towards the tribeless brown.
+            return Color.Lerp(c, TribelessColor, 0.25f);
         }
 
         SpriteRenderer terrain, selection, homeGlow;
@@ -77,7 +116,7 @@ namespace MedievalWorldConquest
         /// <summary>Thin grid lines every this many fields, and heavier ones round each block of this many.</summary>
         public const int SectorSize = 5, BlockSize = 25;
 
-        public static Vector2 FieldCentre(int x, int y) => Origin + new Vector2((x + 0.5f) * FieldWidth, y + 0.5f);
+        public static Vector2 FieldCenter(int x, int y) => Origin + new Vector2((x + 0.5f) * FieldWidth, y + 0.5f);
 
         /// <summary>A scene position in map fields (fractional; may be off the map).</summary>
         public static Vector2 ToFields(Vector2 scenePosition) =>
@@ -128,7 +167,7 @@ namespace MedievalWorldConquest
         public void Refresh(World world, bool force = false, float dt = 0f)
         {
             refreshTimer -= dt;
-            // (At once, not at the next half-second, when the player switches villages: the colours change.)
+            // (At once, not at the next half-second, when the player switches villages: the colors change.)
             int current = world.PlayerVillage?.Id ?? -1;
             if (!force && refreshTimer > 0f && current == shownCurrent) return;
             refreshTimer = 0.5f;
@@ -142,27 +181,27 @@ namespace MedievalWorldConquest
                     // In front of the terrain and glows; lower villages overlap the ones above them. Each village has
                     // three layers: the outline marking the player's own, the picture, and the owner's dot.
                     int order = (10 + World.MapSize - v.Y) * 3;
-                    var centre = FieldCentre(v.X, v.Y);
+                    var center = FieldCenter(v.X, v.Y);
                     marker = AddSprite("Village", VillageArt.MapVillage(0, false), order + 1);
-                    marker.transform.position = centre;
-                    // A field each (a little wider than tall, like the fields), so neighbours don't overlap.
+                    marker.transform.position = center;
+                    // A field each (a little wider than tall, like the fields), so neighbors don't overlap.
                     marker.transform.localScale = new Vector3(1.15f, 0.96f, 1f);
                     markers[v.Id] = marker;
                     markerKeys[v.Id] = -1;
 
                     var dot = AddSprite("Owner", VillageArt.MapDot, order + 2);
-                    dot.transform.position = centre + new Vector2(-0.38f * FieldWidth, 0.36f);
+                    dot.transform.position = center + new Vector2(-0.38f * FieldWidth, 0.36f);
                     dot.transform.localScale = Vector3.one * 0.28f;
                     dots[v.Id] = dot;
 
                     var ring = AddSprite("Own village", VillageArt.MapRing, order);
-                    ring.transform.position = centre;
+                    ring.transform.position = center;
                     ring.transform.localScale = new Vector3(0.97f * FieldWidth, 0.97f, 1f);
                     rings[v.Id] = ring;
                 }
 
-                // As on Tribal Wars' map: villages in full colour by size, barbarians grey, and a dot in the corner in
-                // the owner's colour. Yours are outlined too: yellow, and white for the one you're viewing from.
+                // As on Tribal Wars' map: villages in full color by size, barbarians gray, and a dot in the corner in
+                // the owner's color. Yours are outlined too: yellow, and white for the one you're viewing from.
                 bool mine = human != null && v.OwnerId == human.Id;
                 int key = TierOf(v.Points) * 2 + (v.IsBarbarian ? 1 : 0);
                 if (markerKeys[v.Id] != key)
@@ -174,7 +213,7 @@ namespace MedievalWorldConquest
                 dots[v.Id].color = OwnerColor(world, v);
                 rings[v.Id].enabled = mine;
                 if (mine) rings[v.Id].color = dots[v.Id].color;
-                if (mine && v == world.PlayerVillage) homeGlow.transform.position = FieldCentre(v.X, v.Y);
+                if (mine && v == world.PlayerVillage) homeGlow.transform.position = FieldCenter(v.X, v.Y);
             }
         }
 
@@ -185,7 +224,7 @@ namespace MedievalWorldConquest
         public void Select(Village v)
         {
             selection.enabled = v != null;
-            if (v != null) selection.transform.position = FieldCentre(v.X, v.Y);
+            if (v != null) selection.transform.position = FieldCenter(v.X, v.Y);
         }
 
         // ---------------------------------------------------------------- grid lines

@@ -34,6 +34,8 @@ namespace MedievalWorldConquest.Simulation
         public BuildingType CatapultTarget;
         /// <summary>For merchants: how many are on the road (the goods they carry are in <see cref="Loot"/>).</summary>
         public int Merchants;
+        /// <summary>Who held the target when the command set out (-2: not known, from an older save).</summary>
+        public int TargetOwnerId = -2;
 
         public bool IsTrade => Kind == CommandKind.Transport || Kind == CommandKind.TransportReturn;
     }
@@ -173,6 +175,9 @@ namespace MedievalWorldConquest.Simulation
             from.AwayPopulation += PopulationOf(sent); // troops away still count against their home farm
             var command = March(kind, from.OwnerId, from, to, sent, default, check.Seconds);
             command.CatapultTarget = catapultTarget;
+            // Tribes hear of it: a call for help, a grudge, or help arriving.
+            if (kind == CommandKind.Attack) OnAttackSent(command, from, to);
+            else OnSupportSent(command, to);
             return command;
         }
 
@@ -189,6 +194,7 @@ namespace MedievalWorldConquest.Simulation
                 DepartTime = Now,
                 ArriveTime = Now + seconds,
                 Loot = loot,
+                TargetOwnerId = to.OwnerId,
             };
             CommandIndex()[command.Id] = Commands.Count;
             Commands.Add(command);
@@ -243,7 +249,7 @@ namespace MedievalWorldConquest.Simulation
             switch (command.Kind)
             {
                 case CommandKind.Attack:
-                    if (to != null && from != null) ResolveAttack(command, from, to);
+                    if (to != null && from != null && !TurnBackIfFriendly(command, from, to)) ResolveAttack(command, from, to);
                     break;
                 case CommandKind.Support:
                     if (to != null) Station(command, to);
@@ -300,10 +306,13 @@ namespace MedievalWorldConquest.Simulation
         {
             Touch(target); // its stores (and loyalty) as they are now, before looting
             int defenderOwner = target.OwnerId; // it may change hands below
-            // Everyone defending: the village's own troops plus any support stationed there.
-            var defenders = (int[])target.Troops.Clone();
-            foreach (var g in target.Supports)
-                for (int i = 0; i < Units.Count; i++) defenders[i] += g.Troops[i];
+            // Everyone defending: the village's own troops plus any support stationed there. (Nobody, in a village
+            // its owner has handed over to this attacker: they stand aside.)
+            bool handedOver = FedTo(target, command.OwnerId, Now);
+            var defenders = handedOver ? new int[Units.Count] : (int[])target.Troops.Clone();
+            if (!handedOver)
+                foreach (var g in target.Supports)
+                    for (int i = 0; i < Units.Count; i++) defenders[i] += g.Troops[i];
 
             // Human players with support here hear about the fight too, even if the village isn't theirs.
             var supportOwners = new List<int>();
@@ -319,9 +328,10 @@ namespace MedievalWorldConquest.Simulation
             attacker.AwayPopulation = Math.Max(0, attacker.AwayPopulation - PopulationOf(attackerLost));
 
             // Defender losses, from the village's own troops and each support group alike.
-            var defenderLost = Battle.Losses(target.Troops, result.DefenderLossFraction, result.DefenderScoutLossFraction);
+            var defenderLost = handedOver ? new int[Units.Count] : Battle.Losses(target.Troops, result.DefenderLossFraction, result.DefenderScoutLossFraction);
             for (int i = 0; i < Units.Count; i++) target.Troops[i] -= defenderLost[i];
-            foreach (var g in target.Supports)
+            AddStat(defenderOwner, StatKind.TroopsLost, Total(defenderLost));
+            foreach (var g in handedOver ? new List<SupportGroup>() : target.Supports)
             {
                 var lost = Battle.Losses(g.Troops, result.DefenderLossFraction, result.DefenderScoutLossFraction);
                 for (int i = 0; i < Units.Count; i++)
@@ -329,6 +339,7 @@ namespace MedievalWorldConquest.Simulation
                     g.Troops[i] -= lost[i];
                     defenderLost[i] += lost[i];
                 }
+                AddStat(g.OwnerId, StatKind.TroopsLost, Total(lost));
                 var home = FindVillage(g.FromVillageId);
                 if (home != null) home.AwayPopulation = Math.Max(0, home.AwayPopulation - PopulationOf(lost));
             }
@@ -403,6 +414,11 @@ namespace MedievalWorldConquest.Simulation
                 loot = default;
                 report.Loot = default;
             }
+
+            AddStat(command.OwnerId, StatKind.DefeatedAttacking, Total(defenderLost));
+            AddStat(command.OwnerId, StatKind.TroopsLost, Total(attackerLost));
+            AddStat(defenderOwner, StatKind.DefeatedDefending, Total(attackerLost));
+            AddStat(command.OwnerId, StatKind.Loot, loot.Wood + loot.Clay + loot.Iron);
 
             AiLearnFromBattle(command, target, result, defenders, defenderLost, Total(survivors) > 0, loot, report.LootCapacity, report);
 

@@ -36,6 +36,11 @@ namespace MedievalWorldConquest.Simulation
         /// noble slot bought with ever more coins), rather than a flat price. See <see cref="World.UnitCost"/>.
         /// </summary>
         public bool GoldCoins;
+        /// <summary>
+        /// Whether the world has tribes and diplomacy (a simulated MMO): lords band together, make pacts and war,
+        /// and a bloc of allied tribes can win the world. Off, it's every lord for themselves.
+        /// </summary>
+        public bool Diplomacy;
     }
 
     /// <summary>How well the rival lords play.</summary>

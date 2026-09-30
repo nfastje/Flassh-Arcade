@@ -71,7 +71,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void CancellingResearchRefundsItAndStartsTheNext()
+        public void CancelingResearchRefundsItAndStartsTheNext()
         {
             var world = QuietWorld(out var v);
             v.Levels[(int)BuildingType.Smithy] = 2;

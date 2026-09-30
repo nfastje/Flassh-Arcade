@@ -28,7 +28,7 @@ namespace MedievalWorldConquest.Simulation
         public Requirement Required;
     }
 
-    /// <summary>Building upgrades: checking, queueing, cancelling and completing them.</summary>
+    /// <summary>Building upgrades: checking, queueing, canceling and completing them.</summary>
     public partial class World
     {
         /// <summary>How many upgrades a village can have queued at once, including the one under construction.</summary>
@@ -97,7 +97,7 @@ namespace MedievalWorldConquest.Simulation
 
         /// <summary>
         /// Cancels the last queued upgrade and refunds it in full (it may overflow the warehouse, like any refund).
-        /// Only the last one can be cancelled, since later orders depend on the levels before them.
+        /// Only the last one can be canceled, since later orders depend on the levels before them.
         /// </summary>
         public bool CancelLastBuild(Village v)
         {
@@ -124,7 +124,7 @@ namespace MedievalWorldConquest.Simulation
         void CompleteBuild(ScheduledEvent e)
         {
             var v = FindVillage(e.VillageId);
-            // Ignore stale events (the order was cancelled after it started).
+            // Ignore stale events (the order was canceled after it started).
             if (v == null || v.Queue.Count == 0 || v.Queue[0].Id != e.A) return;
 
             var order = v.Queue[0];

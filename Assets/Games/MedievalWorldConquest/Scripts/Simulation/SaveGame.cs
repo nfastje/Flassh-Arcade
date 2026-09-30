@@ -32,7 +32,7 @@ namespace MedievalWorldConquest.Simulation
             {
                 throw new FormatException("The save file isn't valid JSON.", e);
             }
-            // Unity's JSON reader fills in missing objects instead of leaving them null, so a real save is recognised
+            // Unity's JSON reader fills in missing objects instead of leaving them null, so a real save is recognized
             // by its version number (always 1 or more) and by having players in its world.
             if (file == null || file.Version <= 0 || file.World == null || file.World.Players.Count == 0)
                 throw new FormatException("This isn't a Medieval World Conquest save.");

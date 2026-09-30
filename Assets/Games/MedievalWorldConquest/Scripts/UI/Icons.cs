@@ -44,6 +44,10 @@ namespace MedievalWorldConquest
         public static Texture2D Reports => Get("reports", DrawScroll);
         public static Texture2D Ranking => Get("ranking", DrawTrophy);
         public static Texture2D Map => Get("map", DrawMap);
+        public static Texture2D Messages => Get("messages", DrawLetter);
+        public static Texture2D Villages => Get("villages", DrawHouses);
+        public static Texture2D Village => Get("village", DrawHouse);
+        public static Texture2D Tribe => Get("tribe", DrawBanner);
         public static Texture2D Unit(UnitType type) => Get("unit" + (int)type, p => DrawUnit(p, type));
 
         static Texture2D Get(string key, Action<Painter> draw)
@@ -55,7 +59,7 @@ namespace MedievalWorldConquest
             return cache[key] = painter.ToTexture(key);
         }
 
-        // ---------------------------------------------------------------- colours
+        // ---------------------------------------------------------------- colors
 
         static readonly Color Bark = new Color(0.45f, 0.28f, 0.14f), LightWood = new Color(0.82f, 0.64f, 0.4f);
         static readonly Color Brick = new Color(0.78f, 0.36f, 0.2f), Mortar = new Color(0.55f, 0.24f, 0.13f);
@@ -96,7 +100,7 @@ namespace MedievalWorldConquest
         }
 
         /// <summary>
-        /// An ingot seen from the front and a little above: a bright top, a mid-grey sloping front, a dark foot and a
+        /// An ingot seen from the front and a little above: a bright top, a mid-gray sloping front, a dark foot and a
         /// glint. <paramref name="x"/> and <paramref name="bottom"/> place its lower left corner.
         /// </summary>
         static void Ingot(Painter p, float x, float bottom, float width, float height)
@@ -154,6 +158,45 @@ namespace MedievalWorldConquest
             p.Line(7, 20, 16, 13, 1.5f, new Color(0.7f, 0.2f, 0.15f));
             p.Line(16, 13, 25, 17, 1.5f, new Color(0.7f, 0.2f, 0.15f));
             p.Circle(25, 17, 2f, new Color(0.7f, 0.2f, 0.15f));
+        }
+
+        static void DrawHouses(Painter p)
+        {
+            // Two little houses: the villages overview.
+            p.Rect(3, 17, 15, 28, LightWood);
+            p.Triangle(1, 18, 17, 18, 9, 9, new Color(0.72f, 0.26f, 0.2f));
+            p.Rect(7, 22, 11, 28, Bark);
+            p.Rect(16, 13, 29, 28, Parchment);
+            p.Triangle(14, 14, 31, 14, 22.5f, 4, new Color(0.72f, 0.26f, 0.2f));
+            p.Rect(20.5f, 21, 24.5f, 28, Bark);
+        }
+
+        static void DrawHouse(Painter p)
+        {
+            // One house with a door and a window: the village.
+            p.Rect(7, 15, 25, 28, LightWood);
+            p.Triangle(4, 16, 28, 16, 16, 5, new Color(0.72f, 0.26f, 0.2f));
+            p.Rect(14, 20, 18, 28, Bark);
+            p.Rect(9, 18, 12, 21, Parchment);
+            p.Rect(20, 18, 23, 21, Parchment);
+        }
+
+        static void DrawLetter(Painter p)
+        {
+            // A folded letter with a red wax seal.
+            p.Rect(4, 8, 28, 25, Parchment);
+            p.Line(4, 9, 16, 18, 1.5f, Ink);
+            p.Line(28, 9, 16, 18, 1.5f, Ink);
+            p.Circle(16, 18, 3.5f, new Color(0.75f, 0.12f, 0.1f));
+        }
+
+        static void DrawBanner(Painter p)
+        {
+            // A tribe's banner: a pole with a swallow-tailed flag bearing a gold star.
+            p.Rect(6, 3, 8.5f, 29, Bark);
+            p.Rect(8.5f, 5, 26, 19, new Color(0.25f, 0.4f, 0.8f));
+            p.Triangle(26.5f, 4.5f, 26.5f, 19.5f, 21, 12, default, erase: true); // the swallow-tail notch
+            p.Circle(15, 12, 3.5f, Gold);
         }
 
         // ---------------------------------------------------------------- units
@@ -256,7 +299,7 @@ namespace MedievalWorldConquest
                 px[(Size - 1 - y) * Size + x] = erase ? Color.clear : c;
             }
 
-            /// <summary>Fills every pixel whose centre passes the test.</summary>
+            /// <summary>Fills every pixel whose center passes the test.</summary>
             void Fill(Func<float, float, bool> inside, Color c, bool erase = false)
             {
                 for (int y = 0; y < Size; y++)

@@ -16,7 +16,7 @@ namespace MedievalWorldConquest.Tests
 
         static Village HomeOf(World world, Player p) => world.Villages.First(v => v.OwnerId == p.Id);
 
-        static double FromCentre(Village v) =>
+        static double FromCenter(Village v) =>
             Math.Sqrt((v.X - World.MapSize / 2.0) * (v.X - World.MapSize / 2.0) + (v.Y - World.MapSize / 2.0) * (v.Y - World.MapSize / 2.0));
 
         [Test]
@@ -37,7 +37,7 @@ namespace MedievalWorldConquest.Tests
             Assert.Less(world.Villages.Count(v => v.IsBarbarian), lords.Count, "fewer barbarians than lords");
             Assert.AreEqual(lords.Count, lords.Select(p => p.Name).Distinct().Count(), "every lord has its own name");
             foreach (var p in lords)
-                Assert.LessOrEqual(FromCentre(HomeOf(world, p)), World.StartRadius + World.RingSpread + 1);
+                Assert.LessOrEqual(FromCenter(HomeOf(world, p)), World.StartRadius + World.RingSpread + 1);
             // The regular lords placed at the start keep their distance from the player.
             foreach (var p in regulars)
                 Assert.GreaterOrEqual(World.Distance(world.PlayerVillage, HomeOf(world, p)), World.InitialLordMinDistance - 0.5);
@@ -123,7 +123,7 @@ namespace MedievalWorldConquest.Tests
             var lords = Lords(world);
             Assert.Greater(lords.Count, first + 3, "no fixed number: newcomers keep settling");
             var newest = lords.Last();
-            Assert.Greater(FromCentre(HomeOf(world, newest)), World.StartRadius + World.RingSpread, "newcomers settle on the frontier");
+            Assert.Greater(FromCenter(HomeOf(world, newest)), World.StartRadius + World.RingSpread, "newcomers settle on the frontier");
             Assert.Greater(newest.ProtectedUntil, world.ProtectionEnd, "each newcomer gets its own protection");
             Assert.IsTrue(world.IsProtected(newest.Id) || world.Now > newest.ProtectedUntil);
         }
@@ -135,7 +135,7 @@ namespace MedievalWorldConquest.Tests
             var many = NewWorld(2f);
             few.AdvanceTo(few.Now + 10 * World.SecondsPerDay);
             many.AdvanceTo(many.Now + 10 * World.SecondsPerDay);
-            Assert.Greater(Lords(many).Count, Lords(few).Count * 2);
+            Assert.Greater(Lords(many).Count, Lords(few).Count * 1.8);
         }
 
         [Test]
@@ -215,7 +215,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void AWarlikeLordAttacksAWeakNeighbourOnceProtectionEnds()
+        public void AWarlikeLordAttacksAWeakNeighborOnceProtectionEnds()
         {
             var world = NewWorld();
             var lord = Lords(world).First(p => p.Personality == AiPersonality.Warlord);

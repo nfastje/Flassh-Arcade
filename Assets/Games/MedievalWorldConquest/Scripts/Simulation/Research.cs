@@ -115,7 +115,7 @@ namespace MedievalWorldConquest.Simulation
         void CompleteResearch(ScheduledEvent e)
         {
             var v = FindVillage(e.VillageId);
-            // Ignore stale events (cancelled after it started).
+            // Ignore stale events (canceled after it started).
             if (v == null || v.Researching.Count == 0 || v.Researching[0].Id != e.A) return;
             var order = v.Researching[0];
             v.Researching.RemoveAt(0);

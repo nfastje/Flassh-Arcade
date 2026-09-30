@@ -32,14 +32,8 @@ namespace MedievalWorldConquest.Simulation
             {
                 var human = HumanPlayer;
                 if (human == null) return 0;
-                int own = 0, lords = 0;
-                foreach (var v in Villages)
-                {
-                    if (v.IsBarbarian) continue;
-                    lords++;
-                    if (v.OwnerId == human.Id) own++;
-                }
-                return lords == 0 ? 0 : own / (double)lords;
+                int own = VillagesOf(human.Id).Count, all = GoalVillageCount;
+                return all == 0 ? 0 : own / (double)all;
             }
         }
 
@@ -62,6 +56,7 @@ namespace MedievalWorldConquest.Simulation
         public void QuitLord(Player lord)
         {
             if (lord == null || lord.IsHuman || lord.Quit) return;
+            LeaveTribe(lord);
             lord.Quit = true;
             foreach (var v in new List<Village>(VillagesOf(lord.Id)))
             {
@@ -83,16 +78,12 @@ namespace MedievalWorldConquest.Simulation
         public bool HumanDefeated => HumanPlayer != null && PlayerVillage == null;
 
         /// <summary>
-        /// The loyalty this attack's surviving noblemen take away from its target (each one 20 to 35 points,
-        /// repeatably random from the world seed and the attack).
+        /// The loyalty an attack's surviving nobleman takes away from its target: 20 to 35 points, repeatably random
+        /// from the world seed and the attack. Only one counts, however many came (as in Tribal Wars: it takes a
+        /// noble train, one attack per nobleman).
         /// </summary>
-        double LoyaltyLoss(Command command, int nobles)
-        {
-            double loss = 0;
-            for (int i = 0; i < nobles; i++)
-                loss += NobleLoyaltyMin + Math.Floor(Terrain.Hash(Settings.Seed ^ 0x1B873593, command.Id, i) * (NobleLoyaltyMax - NobleLoyaltyMin + 1));
-            return loss;
-        }
+        double LoyaltyLoss(Command command) =>
+            NobleLoyaltyMin + Math.Floor(Terrain.Hash(Settings.Seed ^ 0x1B873593, command.Id, 0) * (NobleLoyaltyMax - NobleLoyaltyMin + 1));
 
         /// <summary>
         /// The noblemen who survived a victorious attack sway the village; if its loyalty reaches zero it's
@@ -104,7 +95,7 @@ namespace MedievalWorldConquest.Simulation
             if (nobles <= 0 || target.OwnerId == command.OwnerId) return false;
 
             report.LoyaltyBefore = (int)Math.Floor(target.Loyalty);
-            target.Loyalty -= LoyaltyLoss(command, nobles);
+            target.Loyalty -= LoyaltyLoss(command);
             if (target.Loyalty > 0)
             {
                 report.LoyaltyAfter = (int)Math.Floor(target.Loyalty);
@@ -124,11 +115,31 @@ namespace MedievalWorldConquest.Simulation
         {
             int oldOwner = target.OwnerId;
             bool wasBarbarian = target.IsBarbarian;
+            bool handedOver = FedTo(target, command.OwnerId, Now);
+            // Tribes feel it: a loss for one, a win for the other.
+            var loserTribe = TribeOf(oldOwner);
+            var winnerTribe = TribeOf(command.OwnerId);
+            if (loserTribe != null && loserTribe != winnerTribe) loserTribe.LossesSinceTick++;
+            if (winnerTribe != null) winnerTribe.ConquestsSinceTick++;
+            if (!wasBarbarian && FindPlayer(oldOwner) is Player beaten) beaten.LostVillageAt = Now;
+            AddStat(command.OwnerId, StatKind.VillagesConquered, 1);
+            if (!wasBarbarian) AddStat(oldOwner, StatKind.VillagesLost, 1);
             SetOwner(target, command.OwnerId);
             target.Loyalty = LoyaltyAfterConquest;
             if (wasBarbarian) target.Name = NewPlaceName(new Random(Settings.Seed ^ command.Id));
             target.Queue.Clear();
             target.Recruitment.Clear();
+            // A village its old owner handed over: their troops had already left for their nearest other village.
+            if (handedOver)
+            {
+                Village refuge = null;
+                foreach (var v in VillagesOf(oldOwner))
+                    if (refuge == null || Distance(target, v) < Distance(target, refuge)) refuge = v;
+                if (refuge != null)
+                    for (int i = 0; i < Units.Count; i++) refuge.Troops[i] += target.Troops[i];
+                Array.Clear(target.Troops, 0, target.Troops.Length);
+            }
+            target.FedTo = -1;
             // The old owner's troops out on the march are no longer this village's concern.
             target.AwayPopulation = 0;
 
@@ -145,17 +156,27 @@ namespace MedievalWorldConquest.Simulation
             {
                 loser.LastAttackedAt = Now;
                 loser.LastAttackerId = command.OwnerId;
-                // An inactive player who loses their village is gone from the rankings.
-                if (loser.Personality == AiPersonality.Inactive && VillagesOf(loser.Id).Count == 0) loser.Quit = true;
+                // A lord (or inactive player) who loses their last village is finished: out of their tribe and the rankings.
+                if (VillagesOf(loser.Id).Count == 0)
+                {
+                    LeaveTribe(loser);
+                    loser.Quit = true;
+                }
             }
 
             CheckVictory();
         }
 
-        /// <summary>Marks the world won once the player holds the goal's share of the lords' villages.</summary>
+        /// <summary>
+        /// Marks the world won once the player holds the goal's share of the players' villages: alone, or on a
+        /// diplomacy world with their tribe and its allies. On a diplomacy world, a bloc without the player that
+        /// gets there first takes the world instead.
+        /// </summary>
         void CheckVictory()
         {
-            if (!Won && HumanPlayer != null && PlayerVillage != null && HumanShare >= Settings.ConquestGoal) Won = true;
+            // A diplomacy world ends by dominance: the goal held for a while (see CheckDominance).
+            if (Diplomacy) CheckDominance();
+            else if (!Won && HumanPlayer != null && PlayerVillage != null && HumanShare >= Settings.ConquestGoal) Won = true;
         }
 
         /// <summary>

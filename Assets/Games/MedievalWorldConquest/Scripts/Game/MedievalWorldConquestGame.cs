@@ -35,7 +35,8 @@ namespace MedievalWorldConquest
         bool mapPressed, mapDragging;
         Vector2 dragStart, dragLast;
 
-        public bool HasSave => SaveFiles.Exists;
+        /// <summary>The save slot of the world being played (-1: none).</summary>
+        int slot = -1;
 
         void Awake()
         {
@@ -66,22 +67,42 @@ namespace MedievalWorldConquest
 
         /// <summary>
         /// While the village view's pane covers the right of the screen, the camera shifts right so the village sits
-        /// centred in the space that's left: half the pane's width, converted from UI to world units.
+        /// centered in the space that's left: half the pane's width, converted from UI to world units.
         /// </summary>
         static float VillageCameraOffset => VillagePanel.PaneWidth / 2f * (ViewSize * 2f) / 720f;
 
+        /// <summary>
+        /// The start screen: every save slot with a summary of its world (continue, delete, or start a new one in an
+        /// empty slot), over the most recently played world's village.
+        /// </summary>
         void ShowStartScreen()
         {
-            World saved = null;
-            string problem = null;
-            if (SaveFiles.Exists)
+            var summaries = new SaveSummary[SaveFiles.Slots];
+            var errors = new string[SaveFiles.Slots];
+            int latest = -1;
+            for (int i = 0; i < SaveFiles.Slots; i++)
             {
-                saved = SaveFiles.Load(out _, out string error);
-                if (saved == null) problem = $"Your saved world couldn't be loaded. ({error})";
+                summaries[i] = SaveFiles.Summary(i, out errors[i]);
+                if (summaries[i] != null && (latest < 0 || summaries[i].SavedAtUtcTicks > summaries[latest].SavedAtUtcTicks)) latest = i;
             }
-            ui.ShowStart(saved, problem);
-            ShowVillage(saved?.Settings.Seed ?? 0);
-            if (saved?.PlayerVillage != null) village.ShowVillage(saved.PlayerVillage); // the saved village as a backdrop
+            ui.ShowStart(summaries, errors);
+            var backdrop = latest >= 0 ? SaveFiles.Load(latest, out _, out _) : null;
+            ShowVillage(backdrop?.Settings.Seed ?? 0);
+            if (backdrop?.PlayerVillage != null) village.ShowVillage(backdrop.PlayerVillage);
+        }
+
+        /// <summary>Deletes the world in a slot for good, and shows the slots again.</summary>
+        public void DeleteWorld(int saveSlot)
+        {
+            try
+            {
+                SaveFiles.Delete(saveSlot);
+            }
+            catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
+            {
+                ui.ShowToast("Couldn't delete that world.", 4f);
+            }
+            ShowStartScreen();
         }
 
         void ShowVillage(int seed)
@@ -103,7 +124,7 @@ namespace MedievalWorldConquest
         public void CenterMapOnHome()
         {
             var home = world?.PlayerVillage;
-            if (home != null) mapFocus = MapView.FieldCentre(home.X, home.Y);
+            if (home != null) mapFocus = MapView.FieldCenter(home.X, home.Y);
         }
 
         /// <summary>Steps to the player's next (or previous) village.</summary>
@@ -133,12 +154,12 @@ namespace MedievalWorldConquest
             SaveWorld();
         }
 
-        /// <summary>Centres the map on a village and marks it (from its window's "Show on map").</summary>
+        /// <summary>Centers the map on a village and marks it (from its window's "Show on map").</summary>
         public void ShowOnMap(int villageId)
         {
             var v = world?.FindVillage(villageId);
             if (v == null) return;
-            mapFocus = MapView.FieldCentre(v.X, v.Y);
+            mapFocus = MapView.FieldCenter(v.X, v.Y);
             if (map != null) map.Select(v);
         }
 
@@ -147,27 +168,31 @@ namespace MedievalWorldConquest
 
         // ---------------------------------------------------------------- called by the UI
 
-        public void StartNewWorld(WorldSettings settings)
+        public void StartNewWorld(WorldSettings settings, int saveSlot)
         {
+            slot = saveSlot;
             world = World.CreateNew(settings);
             ListenForSounds();
             SaveWorld();
             ShowVillage(settings.Seed);
             CreateMap();
             lastAnnouncedReport = 0;
+            lastAnnouncedMessage = 0;
             ui.ShowGame(world);
             ui.ShowToast($"Welcome to {world.PlayerVillage.Name}.", 4f);
         }
 
-        public void ContinueWorld()
+        public void ContinueWorld(int saveSlot)
         {
-            var loaded = SaveFiles.Load(out DateTime savedAt, out string error);
+            var loaded = SaveFiles.Load(saveSlot, out DateTime savedAt, out string error);
             if (loaded == null)
             {
-                ui.ShowStart(null, $"Your saved world couldn't be loaded. ({error})");
+                ShowStartScreen();
+                ui.ShowToast($"That world couldn't be loaded. ({error})", 5f);
                 return;
             }
 
+            slot = saveSlot;
             world = loaded;
             double away = SaveGame.CatchUpRealSeconds(world, savedAt, DateTime.UtcNow);
             double before = world.Now;
@@ -177,6 +202,7 @@ namespace MedievalWorldConquest
             ShowVillage(world.Settings.Seed);
             CreateMap();
             lastAnnouncedReport = world.NextReportId - 1; // reports from the catch-up wait in the Reports tab
+            lastAnnouncedMessage = world.NextMessageId - 1;
             ui.ShowGame(world);
             if (world.Now - before >= 60)
                 ui.ShowToast($"While you were away, {World.FormatDuration(world.Now - before)} passed in the realm.", 5f);
@@ -231,10 +257,105 @@ namespace MedievalWorldConquest
             else ui.ShowToast("Can't mint coins right now.");
         }
 
+        // ---------------------------------------------------------------- tribes and messages (diplomacy worlds)
+
+        /// <summary>Founds a tribe led by the player. Returns what's wrong, or null if it's done.</summary>
+        public string FoundTribe(string name, string tag)
+        {
+            if (world == null || !world.Diplomacy) return "This world has no tribes.";
+            if (string.IsNullOrWhiteSpace(name)) return "Give your tribe a name.";
+            if (string.IsNullOrWhiteSpace(tag)) return "Give your tribe a short tag, like WOLF.";
+            var tribe = world.FoundTribe(world.HumanPlayer, name, tag);
+            if (tribe == null) return "The tribe couldn't be founded.";
+            ui.ShowToast($"You lead {tribe.Name} [{tribe.Tag}]. Invite lords from their profiles.", 4f);
+            return null;
+        }
+
+        public void AskToJoin(int tribeId)
+        {
+            var t = world?.FindTribe(tribeId);
+            if (t != null && world.AskToJoin(t)) ui.ShowToast($"You've asked to join {t.Name}. Their leader will answer soon.");
+        }
+
+        public void InviteToTribe(int playerId)
+        {
+            var p = world?.FindPlayer(playerId);
+            if (p != null && world.InviteToTribe(p)) ui.ShowToast($"Invitation sent to {p.Name}.");
+        }
+
+        public void ExpelFromTribe(int playerId)
+        {
+            var p = world?.FindPlayer(playerId);
+            if (p != null && world.Expel(p)) ui.ShowToast($"{p.Name} is out of the tribe.");
+        }
+
+        public void LeaveTribe()
+        {
+            if (world == null) return;
+            world.HumanLeavesTribe();
+            ui.ShowToast("You have left your tribe.");
+        }
+
+        public void ProposeRelation(int tribeId, RelationKind kind)
+        {
+            var t = world?.FindTribe(tribeId);
+            if (t == null || !world.ProposeRelation(t, kind)) return;
+            if (kind == RelationKind.Enemy) ui.ShowToast($"You are at war with {t.Name}.");
+            else if (kind == RelationKind.Neutral) ui.ShowToast($"No more agreement with {t.Name}.");
+            else ui.ShowToast($"{t.Name} accepted.");
+        }
+
+        public void SetTribeTarget(int villageId)
+        {
+            var v = world?.FindVillage(villageId);
+            if (v != null && world.SetTribeTarget(v)) ui.ShowToast($"{v.Name} is your tribe's target.");
+        }
+
+        public void ClearTribeTarget()
+        {
+            var t = world?.TribeOf(world.HumanPlayer);
+            if (t != null) t.TargetVillageId = -1;
+        }
+
+        public void RequestSupport()
+        {
+            if (world != null && world.RequestSupport(world.PlayerVillage)) ui.ShowToast($"Your tribe mates have been asked to support {world.PlayerVillage.Name}.");
+        }
+
+        public void AnswerMessage(int id, bool yes)
+        {
+            if (world == null) return;
+            var m = world.FindMessage(id);
+            bool done = world.AnswerMessage(id, yes);
+            if (m != null && yes && m.Kind == MessageKind.Invitation) ui.ShowToast(done ? "You have joined the tribe." : "That invitation no longer stands.");
+        }
+
+        public void MarkMessageRead(int id)
+        {
+            var m = world?.FindMessage(id);
+            if (m != null) m.Read = true;
+        }
+
+        public void MarkAllMessagesRead() => world?.MarkAllMessagesRead();
+
+        public void DeleteMessage(int id) => world?.DeleteMessage(id);
+
+        int lastAnnouncedMessage;
+
+        /// <summary>Pops up the subject of any message that arrived since last frame.</summary>
+        void AnnounceNewMessages()
+        {
+            int newest = world.NextMessageId - 1;
+            if (newest <= lastAnnouncedMessage) return;
+            lastAnnouncedMessage = newest;
+            var m = world.FindMessage(newest);
+            if (m != null) ui.ShowToast($"New message: {m.Subject}", 4f);
+        }
+
         public void CancelResearch(int orderId)
         {
             var v = world?.PlayerVillage;
-            if (v != null && world.CancelResearch(v, orderId)) ui.ShowToast("Research cancelled. Resources refunded.");
+            if (v != null && world.CancelResearch(v, orderId)) ui.ShowToast("Research canceled. Resources refunded.");
         }
 
         /// <summary>Sends merchants with resources to the village at a map field. Returns what's wrong, or null if they set off.</summary>
@@ -275,7 +396,7 @@ namespace MedievalWorldConquest
         public void CancelRecruit(int orderId)
         {
             var v = world?.PlayerVillage;
-            if (v != null && world.CancelRecruit(v, orderId)) ui.ShowToast("Training cancelled. Untrained units refunded.");
+            if (v != null && world.CancelRecruit(v, orderId)) ui.ShowToast("Training canceled. Untrained units refunded.");
         }
 
         /// <summary>Sends troops from the player's village to another. Returns whether they set off.</summary>
@@ -292,6 +413,22 @@ namespace MedievalWorldConquest
             }
             string verb = kind == CommandKind.Attack ? "Attack" : "Support";
             ui.ShowToast($"{verb} sent to {target.Name}. Arrives in {Ui.Real(world, command.ArriveTime - world.Now)}.", 4f);
+            return true;
+        }
+
+        /// <summary>Sends a noble train from the current village: one attack per nobleman, landing one after another.</summary>
+        public bool SendNobleTrain(int targetVillageId, int[] troops, TrainEscort escort, BuildingType catapultTarget)
+        {
+            var home = world?.PlayerVillage;
+            var target = world?.FindVillage(targetVillageId);
+            if (home == null || target == null) return false;
+            var train = world.SendTrain(home, target, troops, escort, catapultTarget);
+            if (train == null || train.Count == 0)
+            {
+                ui.ShowToast("Those troops can't be sent.");
+                return false;
+            }
+            ui.ShowToast($"Noble train of {train.Count} attacks sent to {target.Name}. Arrives in {Ui.Real(world, train[0].ArriveTime - world.Now)}.", 4f);
             return true;
         }
 
@@ -326,15 +463,15 @@ namespace MedievalWorldConquest
         public void CancelLastBuild()
         {
             var v = world?.PlayerVillage;
-            if (v != null && world.CancelLastBuild(v)) ui.ShowToast("Construction cancelled. Resources refunded.");
+            if (v != null && world.CancelLastBuild(v)) ui.ShowToast("Construction canceled. Resources refunded.");
         }
 
         public void SaveWorld()
         {
-            if (world == null) return;
+            if (world == null || slot < 0) return;
             try
             {
-                SaveFiles.Save(world);
+                SaveFiles.Save(world, slot);
                 autosaveTimer = 0f;
             }
             catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
@@ -380,6 +517,7 @@ namespace MedievalWorldConquest
             // The world runs on regardless of menus, like the browser games it's based on.
             world.AdvanceByRealSeconds(dt);
             AnnounceNewReports();
+            AnnounceNewMessages();
             SoundTheHorn();
             ui.Refresh(world);
 
@@ -390,6 +528,12 @@ namespace MedievalWorldConquest
                 ui.ShowVictory(world);
             }
             if (world.HumanDefeated && !ui.EndScreenOpen) ui.ShowDefeat(world);
+            // On a diplomacy world, another bloc can take the world first.
+            if (world.LostToBloc && !world.LossShown && !ui.EndScreenOpen)
+            {
+                world.LossShown = true;
+                ui.ShowBlocVictory(world);
+            }
 
             // The map tab swaps the illustrated village for the world map.
             bool onMap = ui.MapTabActive;
@@ -460,9 +604,10 @@ namespace MedievalWorldConquest
             cam.orthographicSize = ViewSize;
             float targetX = ui.VillageTabActive ? VillageCameraOffset : 0f;
             var camPos = cam.transform.position;
-            // Coming back from the map, jump straight to the village rather than sliding across the scene.
-            camPos.x = Mathf.Abs(camPos.x - targetX) > 50f ? targetX : Mathf.Lerp(camPos.x, targetX, 1f - Mathf.Exp(-8f * dt));
-            camPos.y = 0f;
+            // Straight to its place, whichever tab the player comes back from (no sliding across the scene).
+            camPos.x = targetX;
+            // Raised by half the top bar, so the village sits in the middle of the space below it.
+            camPos.y = GameUI.TopBarHeight / 2f * (ViewSize * 2f) / 720f;
             cam.transform.position = camPos;
         }
 

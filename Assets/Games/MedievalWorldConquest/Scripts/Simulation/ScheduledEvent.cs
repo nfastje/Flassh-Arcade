@@ -29,6 +29,8 @@ namespace MedievalWorldConquest.Simulation
         InactiveGrowth = 9,
         /// <summary>An inactive player's account is closed: their villages go barbarian. A = the player's id.</summary>
         InactiveLeaves = 10,
+        /// <summary>Twice a game day on a diplomacy world: tribes form, recruit, make pacts and war, and strain or break.</summary>
+        TribeTick = 11,
     }
 
     /// <summary>

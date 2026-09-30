@@ -35,7 +35,7 @@ namespace MedievalWorldConquest.Tests
         public void AStrongerAttackWinsAndTheWinnerLosesSome()
         {
             var attackers = Army((UnitType.Axeman, 100));   // 4000 infantry attack
-            var defenders = Army((UnitType.Spearman, 50));  // 20 + 50 × 15 = 770 infantry defence
+            var defenders = Army((UnitType.Spearman, 50));  // 20 + 50 × 15 = 770 infantry defense
             var r = Battle.Fight(attackers, defenders, 0, 0);
 
             Assert.IsTrue(r.AttackerWon);
@@ -56,7 +56,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void DefendersUseTheirDefenceAgainstTheAttackersClass()
+        public void DefendersUseTheirDefenseAgainstTheAttackersClass()
         {
             // Spearmen defend far better against cavalry (45) than infantry (15).
             var spears = Army((UnitType.Spearman, 100));

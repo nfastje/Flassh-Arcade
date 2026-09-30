@@ -33,7 +33,7 @@ namespace MedievalWorldConquest
             }
         }
 
-        /// <summary>2 x 2 unit tileable grass, pivot in the centre.</summary>
+        /// <summary>2 x 2 unit tileable grass, pivot in the center.</summary>
         public static Sprite Grass => grass != null ? grass : grass = Make("Grass", 128, 128, 64f, new Vector2(0.5f, 0.5f), TextureWrapMode.Repeat, (x, y) =>
         {
             // Tileable noise: sample Perlin noise around a torus so the edges match up.
@@ -42,7 +42,7 @@ namespace MedievalWorldConquest
             return c;
         });
 
-        /// <summary>1 x 1 unit trodden-earth oval, pivot in the centre (stretched to size).</summary>
+        /// <summary>1 x 1 unit trodden-earth oval, pivot in the center (stretched to size).</summary>
         public static Sprite Clearing => clearing != null ? clearing : clearing = Make("Clearing", 256, 256, 256f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
         {
             float u = (x + 0.5f) / 128f - 1f, v = (y + 0.5f) / 128f - 1f;
@@ -55,7 +55,7 @@ namespace MedievalWorldConquest
             return c;
         });
 
-        /// <summary>1 x 1 unit soft white oval, pivot in the centre, tinted to mark a selection.</summary>
+        /// <summary>1 x 1 unit soft white oval, pivot in the center, tinted to mark a selection.</summary>
         public static Sprite Glow => glow != null ? glow : glow = Make("Glow", 64, 64, 64f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
         {
             float u = (x + 0.5f) / 32f - 1f, v = (y + 0.5f) / 32f - 1f;
@@ -64,7 +64,7 @@ namespace MedievalWorldConquest
         });
 
         /// <summary>
-        /// 1 x 1 unit ragged-edged ground patch, pivot in the centre (stretched to size). Light and textured, for
+        /// 1 x 1 unit ragged-edged ground patch, pivot in the center (stretched to size). Light and textured, for
         /// tinting: forest floor, clay, rock or field around the resource buildings.
         /// </summary>
         public static Sprite Patch => patch != null ? patch : patch = Make("Patch", 128, 128, 128f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
@@ -119,7 +119,7 @@ namespace MedievalWorldConquest
             return c;
         });
 
-        /// <summary>A little house for marking villages on the world map, 1 unit wide, pivot in the centre. White, for tinting.</summary>
+        /// <summary>A little house for marking villages on the world map, 1 unit wide, pivot in the center. White, for tinting.</summary>
         public static Sprite MapHut => mapHut != null ? mapHut : mapHut = Make("MapHut", 32, 32, 32f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
         {
             float px = x + 0.5f, py = y + 0.5f;
@@ -138,10 +138,10 @@ namespace MedievalWorldConquest
         static Sprite mapDot, mapRing;
 
         /// <summary>
-        /// A village on the world map, one field (1 unit) across, pivot in the centre, in full colour like Tribal
+        /// A village on the world map, one field (1 unit) across, pivot in the center, in full color like Tribal
         /// Wars' map: tiers 0 and 1 a ring of palisade round a dirt yard with a few huts, tiers 2 to 5 a stone-walled
         /// octagon that fills up with houses, towers and finally a keep. Barbarian villages are the same pictures in
-        /// dull greys.
+        /// dull grays.
         /// </summary>
         public static Sprite MapVillage(int tier, bool barbarian)
         {
@@ -166,7 +166,7 @@ namespace MedievalWorldConquest
 
         static Sprite pixel;
 
-        /// <summary>A plain white square, 1 unit across, pivot in the centre: stretched and tinted for lines.</summary>
+        /// <summary>A plain white square, 1 unit across, pivot in the center: stretched and tinted for lines.</summary>
         public static Sprite Pixel => pixel != null ? pixel : pixel = Make("Pixel", 4, 4, 4f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) => Color.white);
 
         /// <summary>The owner's marker in the corner of a map village: a white disc with a dark rim, for tinting.</summary>

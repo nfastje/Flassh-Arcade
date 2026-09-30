@@ -152,11 +152,11 @@ namespace MedievalWorldConquest
         readonly UpgradeBox upgrade;
         readonly IntegerField targetX, targetY, sendWood, sendClay, sendIron;
         readonly IntegerField sellAmount, buyAmount, lots;
-        readonly DropdownField sell, buy;
+        readonly Button[] sellPicks = new Button[3], buyPicks = new Button[3];
+        ResourceType sell = ResourceType.Wood, buy = ResourceType.Clay;
         readonly VisualElement othersList, ownList;
         string othersSignature, ownSignature;
 
-        static readonly List<string> ResourceNames = new List<string> { "Wood", "Clay", "Iron" };
 
         public MarketView(MedievalWorldConquestGame game, UiLinks links)
         {
@@ -192,19 +192,24 @@ namespace MedievalWorldConquest
             othersList = Element("queue-list");
             Root.Add(othersList);
 
-            // The player's own offers.
+            // The player's own offers: what to give, what for, and how many times over, a row each.
             Root.Add(Text("Your offers", "heading"));
-            var create = Element("send-to-row", "offer-row");
-            create.Add(Text("Give", "row-title"));
-            sellAmount = Field(create, 1000);
-            sell = Choice(create, 0);
-            create.Add(Text("for", "row-title"));
-            buyAmount = Field(create, 1000);
-            buy = Choice(create, 1);
-            create.Add(Text("×", "row-title"));
-            lots = Field(create, 1);
-            create.Add(ButtonWith("Post offer", Post, "btn", "btn--small"));
-            Root.Add(create);
+            var give = Element("send-to-row", "offer-row");
+            give.Add(Text("Give", "row-title", "offer-label"));
+            sellAmount = Field(give, 1000);
+            Picks(give, sellPicks, r => { sell = r; ShowPicks(); });
+            Root.Add(give);
+            var get = Element("send-to-row", "offer-row");
+            get.Add(Text("For", "row-title", "offer-label"));
+            buyAmount = Field(get, 1000);
+            Picks(get, buyPicks, r => { buy = r; ShowPicks(); });
+            Root.Add(get);
+            var times = Element("send-to-row", "offer-row");
+            times.Add(Text("Times", "row-title", "offer-label"));
+            lots = Field(times, 1);
+            times.Add(ButtonWith("Post offer", Post, "btn", "btn--small"));
+            Root.Add(times);
+            ShowPicks();
             offerMessage = Text($"What you give is set aside until the offer is taken, withdrawn, or runs out after {World.OfferHours:0} game hours.", "row-info");
             Root.Add(offerMessage);
             ownList = Element("queue-list");
@@ -228,12 +233,28 @@ namespace MedievalWorldConquest
             return f;
         }
 
-        static DropdownField Choice(VisualElement row, int index)
+        /// <summary>A button for each resource (its icon and name), one of them chosen.</summary>
+        static void Picks(VisualElement row, Button[] picks, Action<ResourceType> choose)
         {
-            var d = new DropdownField(ResourceNames, index);
-            d.AddToClassList("resource-choice");
-            row.Add(d);
-            return d;
+            for (int i = 0; i < 3; i++)
+            {
+                var r = (ResourceType)i;
+                var b = new Button(() => choose(r));
+                b.AddToClassList("resource-pick");
+                b.Add(Icons.Element(Icons.Resource(r), 16, "cost-icon"));
+                b.Add(Text(r.ToString(), "resource-pick-label"));
+                picks[i] = b;
+                row.Add(b);
+            }
+        }
+
+        void ShowPicks()
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                sellPicks[i].EnableInClassList("resource-pick--selected", (int)sell == i);
+                buyPicks[i].EnableInClassList("resource-pick--selected", (int)buy == i);
+            }
         }
 
         /// <summary>Fills in where to send resources (from a village's window).</summary>
@@ -257,7 +278,7 @@ namespace MedievalWorldConquest
 
         void Post()
         {
-            string problem = game.PostOffer((ResourceType)Math.Max(0, sell.index), sellAmount.value, (ResourceType)Math.Max(0, buy.index), buyAmount.value, lots.value);
+            string problem = game.PostOffer(sell, sellAmount.value, buy, buyAmount.value, lots.value);
             SetText(offerMessage, problem ?? "Offer posted.");
         }
 

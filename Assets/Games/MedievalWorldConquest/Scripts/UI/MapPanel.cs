@@ -17,6 +17,7 @@ namespace MedievalWorldConquest
         public Rect ViewInFields;
 
         readonly MiniMap miniMap;
+        readonly Button colorMode;
         readonly VisualElement tooltip;
         readonly Label tooltipOwner, tooltipName, tooltipInfo;
 
@@ -40,6 +41,9 @@ namespace MedievalWorldConquest
             // map there.
             var corner = Element("map-corner");
             corner.Add(ButtonWith("Go to my village", () => game.CenterMapOnHome(), "btn", "btn--small", "map-home-btn"));
+            // On diplomacy worlds: color villages by tribe (blue yours, turquoise allies, purple pacts, red enemies) or by player.
+            colorMode = ButtonWith("", () => MapView.ColorByTribe = !MapView.ColorByTribe, "btn", "btn--small", "map-color-btn");
+            corner.Add(colorMode);
             miniMap = new MiniMap(game.CenterMapOn);
             corner.Add(miniMap.Root);
             Root.Add(corner);
@@ -57,7 +61,8 @@ namespace MedievalWorldConquest
             Show(tooltip, show);
             if (!show) return;
 
-            SetText(tooltipOwner, world.OwnerName(village));
+            var owner = world.FindPlayer(village.OwnerId);
+            SetText(tooltipOwner, owner != null ? world.NameWithTag(owner) : world.OwnerName(village));
             tooltipOwner.style.color = MapView.OwnerColor(world, village);
             SetText(tooltipName, village.Name);
             SetText(tooltipInfo, $"({village.X}|{village.Y}) {World.ContinentName(village.X, village.Y)}  ·  {village.Points:N0} points");
@@ -69,7 +74,12 @@ namespace MedievalWorldConquest
             tooltip.style.top = p.y + 14f;
         }
 
-        public void Refresh(World world) => miniMap.Refresh(world, ViewInFields);
+        public void Refresh(World world)
+        {
+            miniMap.Refresh(world, ViewInFields);
+            Show(colorMode, world.Diplomacy);
+            SetText(colorMode, MapView.ColorByTribe ? "Colors: by tribe" : "Colors: by player");
+        }
 
         // Continent numbers over the map, one per 25 × 25 block in view (made as needed and reused).
         readonly System.Collections.Generic.List<Label> continentLabels = new System.Collections.Generic.List<Label>();
@@ -109,8 +119,8 @@ namespace MedievalWorldConquest
                         }
                         var label = continentLabels[used++];
                         SetText(label, $"K{by * 10 + bx:00}");
-                        var centre = MapView.FromFields(new Vector2((bx + 0.5f) * size, (by + 0.5f) * size));
-                        Vector2 p = RuntimePanelUtils.CameraTransformWorldToPanel(Root.panel, centre, cam);
+                        var center = MapView.FromFields(new Vector2((bx + 0.5f) * size, (by + 0.5f) * size));
+                        Vector2 p = RuntimePanelUtils.CameraTransformWorldToPanel(Root.panel, center, cam);
                         label.style.left = p.x;
                         label.style.top = p.y;
                         Show(label, true);

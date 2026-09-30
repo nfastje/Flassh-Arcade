@@ -25,16 +25,25 @@ namespace MedievalWorldConquest.Simulation
 
     /// <summary>
     /// Gold coins, as on Tribal Wars' coin worlds (a choice made when the world is created): noblemen cost more
-    /// (40,000 wood, 50,000 clay, 50,000 iron), and each needs a free noble slot. Slots come from gold coins minted
-    /// at an academy (28,000 wood, 30,000 clay, 25,000 iron each), and every slot needs one more coin than the last:
+    /// (20,000 wood, 25,000 clay, 25,000 iron), and each needs a free noble slot. Slots come from gold coins minted
+    /// at an academy (14,000 wood, 15,000 clay, 12,500 iron each), and every slot needs one more coin than the last:
     /// 1 coin for the first, 3 in all for two, 6 for three, 10 for four. Every nobleman a player has (at home, in
     /// training or on the march) takes a slot, and so does every village they hold beyond their first, so each
-    /// conquest makes the next one dearer. That's what keeps any one lord from running away with the world.
+    /// conquest makes the next one dearer. That's what keeps any one lord from running away with the world. (Prices
+    /// are half of Tribal Wars': a single-player world is smaller and has to end in months, not years.)
     /// </summary>
     public partial class World
     {
-        public static readonly Cost CoinCost = new Cost(28000, 30000, 25000);
-        public static readonly Cost CoinWorldNobleCost = new Cost(40000, 50000, 50000, 100);
+        /// <summary>
+        /// The share of Tribal Wars' prices that gold coins and coin-world noblemen cost (1: the full price).
+        /// </summary>
+        public static double CoinPriceFactor = 0.5;
+
+        public static Cost CoinCost => Scaled(new Cost(28000, 30000, 25000), 0);
+        public static Cost CoinWorldNobleCost => Scaled(new Cost(40000, 50000, 50000), 100);
+
+        static Cost Scaled(Cost c, int population) => new Cost(
+            (int)Math.Round(c.Wood * CoinPriceFactor), (int)Math.Round(c.Clay * CoinPriceFactor), (int)Math.Round(c.Iron * CoinPriceFactor), population);
 
         /// <summary>What a unit costs in this world: noblemen are dearer where they need gold coins.</summary>
         public Cost UnitCost(UnitType unit) =>

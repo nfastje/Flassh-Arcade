@@ -34,7 +34,7 @@ namespace MedievalWorldConquest.Simulation
         public double AffordableIn;
     }
 
-    /// <summary>Training troops: checking, ordering, cancelling, and units finishing one at a time.</summary>
+    /// <summary>Training troops: checking, ordering, canceling, and units finishing one at a time.</summary>
     public partial class World
     {
         /// <summary>How many batches each training building can have queued at once, including the one in training.</summary>

@@ -15,7 +15,7 @@ namespace MedievalWorldConquest.Simulation
         public double Seconds;
         /// <summary>When it finishes, once construction has started; 0 while still waiting its turn.</summary>
         public double FinishTime;
-        /// <summary>What was paid, refunded if cancelled.</summary>
+        /// <summary>What was paid, refunded if canceled.</summary>
         public Cost Paid;
 
         public bool Started => FinishTime > 0;
@@ -55,7 +55,7 @@ namespace MedievalWorldConquest.Simulation
         public double Seconds;
         /// <summary>When it finishes, once under way; 0 while waiting its turn.</summary>
         public double FinishTime;
-        /// <summary>What was paid, refunded if cancelled.</summary>
+        /// <summary>What was paid, refunded if canceled.</summary>
         public Cost Paid;
 
         public bool Started => FinishTime > 0;
@@ -84,6 +84,12 @@ namespace MedievalWorldConquest.Simulation
         /// creeps back up by itself (brought up to date along with the stores).
         /// </summary>
         public double Loyalty = 100;
+        /// <summary>
+        /// On a diplomacy world's endgame: the lord a satellite has offered this village to (-1: nobody), and until
+        /// when. That lord's attacks meet no defenders here.
+        /// </summary>
+        public int FedTo = -1;
+        public double FedUntil;
         public List<BuildOrder> Queue = new List<BuildOrder>();
         public int NextOrderId = 1;
         /// <summary>For barbarian villages: how many times they've grown on their own (drives which building grows next).</summary>

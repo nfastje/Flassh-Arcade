@@ -84,11 +84,22 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void EnoughNoblemenWinTheVillageOver()
+        public void SeveralNoblemenInOneAttackSwayItOnlyOnce()
+        {
+            var world = ConquestWorld(out var home, out var target);
+            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 5)), CommandKind.Attack);
+            world.AdvanceTo(attack.ArriveTime);
+            Assert.That(target.Loyalty, Is.InRange(100 - World.NobleLoyaltyMax, 100 - World.NobleLoyaltyMin), "it takes a train");
+            Assert.IsTrue(target.IsBarbarian);
+        }
+
+        [Test]
+        public void ANoblemanWhoBringsLoyaltyToZeroWinsTheVillageOver()
         {
             var world = ConquestWorld(out var home, out var target);
             target.Wood = target.Clay = target.Iron = 400;
-            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 5)), CommandKind.Attack);
+            target.Loyalty = 15; // (worn down by the noblemen before him)
+            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 1)), CommandKind.Attack);
             world.AdvanceTo(attack.ArriveTime);
 
             var report = world.Reports.Last();
@@ -99,7 +110,7 @@ namespace MedievalWorldConquest.Tests
             // The survivors moved in, less the nobleman who now rules it; nobody marches home.
             int axes = 100 - report.AttackerLost[(int)UnitType.Axeman];
             Assert.AreEqual(axes, target.TroopCount(UnitType.Axeman));
-            Assert.AreEqual(4 - report.AttackerLost[(int)UnitType.Nobleman], target.TroopCount(UnitType.Nobleman));
+            Assert.AreEqual(0, target.TroopCount(UnitType.Nobleman), "the nobleman rules it now");
             Assert.IsFalse(world.Commands.Any(c => c.Kind == CommandKind.Return));
             Assert.AreEqual(0, home.AwayPopulation, "they no longer count against the old village's farm");
             Assert.AreEqual(0, report.Loot.Wood, "the stores stay: they're the conqueror's now");
@@ -125,7 +136,8 @@ namespace MedievalWorldConquest.Tests
         {
             var world = ConquestWorld(out var home, out var target);
             Assert.IsFalse(world.SelectVillage(target.Id), "not theirs yet");
-            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 5)), CommandKind.Attack);
+            target.Loyalty = 15;
+            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 1)), CommandKind.Attack);
             world.AdvanceTo(attack.ArriveTime);
 
             Assert.AreSame(home, world.PlayerVillage);
@@ -144,7 +156,8 @@ namespace MedievalWorldConquest.Tests
             world.Settings.ConquestGoal = 1.5f / (world.LordVillageCount + 1);
             Assert.Less(world.HumanShare, world.Settings.ConquestGoal);
             Assert.IsFalse(world.Won);
-            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 5)), CommandKind.Attack);
+            target.Loyalty = 15;
+            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 1)), CommandKind.Attack);
             world.AdvanceTo(attack.ArriveTime);
             Assert.IsTrue(world.Won);
             Assert.Greater(world.HumanShare, world.Settings.ConquestGoal);
@@ -162,7 +175,8 @@ namespace MedievalWorldConquest.Tests
             home.Troops[(int)UnitType.Axeman] = 0;
             home.Troops[(int)UnitType.Nobleman] = 0;
 
-            var attack = world.Send(camp, home, Army((UnitType.Axeman, 500), (UnitType.Nobleman, 5)), CommandKind.Attack);
+            home.Loyalty = 15;
+            var attack = world.Send(camp, home, Army((UnitType.Axeman, 500), (UnitType.Nobleman, 1)), CommandKind.Attack);
             world.AdvanceTo(attack.ArriveTime);
 
             Assert.AreEqual(lord.Id, home.OwnerId);

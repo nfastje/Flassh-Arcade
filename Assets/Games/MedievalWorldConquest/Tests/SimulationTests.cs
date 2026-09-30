@@ -92,7 +92,7 @@ namespace MedievalWorldConquest.Tests
         {
             var world = NewWorld();
             var times = new List<double>();
-            world.EventApplied = e => times.Add(world.Now);
+            world.EventApplied = e => { if (e.Kind == EventKind.None) times.Add(world.Now); }; // (lords may take turns meanwhile)
             world.Schedule(10, EventKind.None);
             world.Schedule(25, EventKind.None);
 

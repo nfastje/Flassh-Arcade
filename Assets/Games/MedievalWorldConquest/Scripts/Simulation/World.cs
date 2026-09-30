@@ -3,6 +3,14 @@ using System.Collections.Generic;
 
 namespace MedievalWorldConquest.Simulation
 {
+    /// <summary>Support a lord sent to a tribe mate, and when to call it home.</summary>
+    [Serializable]
+    public class SupportPlacement
+    {
+        public int HostId, FromId;
+        public double Until;
+    }
+
     [Serializable]
     public class Player
     {
@@ -14,7 +22,7 @@ namespace MedievalWorldConquest.Simulation
 
         // ---- rival lords (AI) only
         public AiPersonality Personality;
-        /// <summary>Which colour the lord's villages have on the map.</summary>
+        /// <summary>Which color the lord's villages have on the map.</summary>
         public int ColorIndex;
         /// <summary>How many times the lord has taken its turn (drives its repeatable random choices).</summary>
         public int ThinkCount;
@@ -27,12 +35,39 @@ namespace MedievalWorldConquest.Simulation
         public List<AiNote> Notes = new List<AiNote>();
         /// <summary>The village the lord means to win over with its noblemen, or -1.</summary>
         public int ConquestTargetId = -1;
+        /// <summary>The most villages the lord has held (checked twice a day), and when they last lost one to another player (-1: never).</summary>
+        public int PeakVillages;
+        public double LostVillageAt = -1;
+        /// <summary>The lord's statistics (by <see cref="StatKind"/>): all time, and where they stood when the day and the week began.</summary>
+        public long[] Stats = new long[World.StatKinds], StatsDayStart = new long[World.StatKinds], StatsWeekStart = new long[World.StatKinds];
         /// <summary>For noobs: when they recently lost fights in their villages (too many in a short time and they quit).</summary>
         public List<double> HitTimes = new List<double>();
         /// <summary>Whether the lord has given up: its villages went barbarian and it no longer plays.</summary>
         public bool Quit;
         /// <summary>Gold coins minted so far (on coin worlds): they buy noble slots.</summary>
         public int Coins;
+
+        // ---- tribes (diplomacy worlds)
+        /// <summary>The player's tribe, or -1.</summary>
+        public int TribeId = -1;
+        public double JoinedTribeAt;
+        /// <summary>
+        /// How happy the player is in their tribe, 0 to 100 (for the human: how their tribe sees them). Help given
+        /// and received raises it; being left alone under attack, or leaving others to it, lowers it.
+        /// </summary>
+        public double Satisfaction = 60;
+        /// <summary>How far others trust the player, around 0: broken pacts and attacks on friends lower it; it recovers slowly.</summary>
+        public double Reputation;
+        /// <summary>Support this lord has sent to help tribe mates, to call home once the danger has passed.</summary>
+        public List<SupportPlacement> SupportPlacements = new List<SupportPlacement>();
+        /// <summary>For the human: the tribe they've asked to join (-1: none), and lords they've invited to theirs.</summary>
+        public int AskedToJoinTribe = -1;
+        public List<int> Invited = new List<int>();
+        /// <summary>
+        /// How far a lord likes to spread, 0 to 1: a consolidator (near 0) wins villages close to its own, keeping a
+        /// tight, defensible core; a spreader (near 1) reaches further for the richest prizes and ends up scattered.
+        /// </summary>
+        public double Spread = 0.5;
         /// <summary>For noobs: how far their build plan goes before they stop growing (0: their personality's usual).</summary>
         public int StageCap;
         /// <summary>For inactive players: the village points their village grows to before they stop for good.</summary>
@@ -69,9 +104,12 @@ namespace MedievalWorldConquest.Simulation
         /// 14 added the smithy (research), the market (merchants and offers) and the hiding place;
         /// 15 added inactive players and more barbarian villages to fill the map;
         /// 16 gave each noob its own limit on how far it grows;
-        /// 17 added the gold-coin option for noblemen (older worlds keep the flat price).
+        /// 17 added the gold-coin option for noblemen (older worlds keep the flat price);
+        /// 18 added tribes, diplomacy and messages (an option for new worlds; older worlds stay free-for-all);
+        /// 19 added the dominance ending (holding the goal), the world lock and how far each lord likes to spread;
+        /// 20 added the factions' endgame (villages handed over), noble trains and world statistics.
         /// </summary>
-        public const int CurrentVersion = 17;
+        public const int CurrentVersion = 20;
 
         /// <summary>The longest name a village can be given.</summary>
         public const int MaxVillageNameLength = 32;
@@ -138,6 +176,7 @@ namespace MedievalWorldConquest.Simulation
             world.NextVillageId = 1;
             world.SettleStartingArea();
             world.ScheduleWorldGrowth();
+            if (settings.Diplomacy) world.ScheduleTribeTick();
             return world;
         }
 
@@ -209,7 +248,33 @@ namespace MedievalWorldConquest.Simulation
                 CurrentVillageId = PlayerVillage?.Id ?? 0;
             }
             foreach (var p in Players)
+            {
                 if (p.HitTimes == null) p.HitTimes = new List<double>();
+                if (p.SupportPlacements == null) p.SupportPlacements = new List<SupportPlacement>();
+                if (p.Invited == null) p.Invited = new List<int>();
+                if (savedVersion < 18)
+                {
+                    p.TribeId = -1;
+                    p.AskedToJoinTribe = -1;
+                    p.Satisfaction = 60;
+                }
+            }
+            if (Tribes == null) Tribes = new List<Tribe>();
+            if (Relations == null) Relations = new List<TribeRelation>();
+            if (Messages == null) Messages = new List<Message>();
+            if (HoldBloc == null) HoldBloc = new List<int>();
+            // Version 20: factions, handed-over villages and statistics (counted from now on).
+            if (savedVersion < 20)
+            {
+                foreach (var v in Villages) v.FedTo = -1;
+                foreach (var t in Tribes) t.FactionId = -1;
+                foreach (var c in Commands) c.TargetOwnerId = -2;
+                StatsDay = DayOf(Now);
+            }
+            if (WorldStats == null || WorldStats.Length != StatKinds) WorldStats = Resized(WorldStats, StatKinds);
+            if (WorldStatsDayStart == null || WorldStatsDayStart.Length != StatKinds) WorldStatsDayStart = Resized(WorldStatsDayStart, StatKinds);
+            if (StatHistory == null) StatHistory = new List<DayStats>();
+            foreach (var p in Players) EnsureStats(p);
             // Every village has a rally point, as in Tribal Wars.
             if (savedVersion < 12)
                 foreach (var v in Villages) v.Levels[(int)BuildingType.RallyPoint] = Math.Max(1, v.Levels[(int)BuildingType.RallyPoint]);
@@ -407,6 +472,9 @@ namespace MedievalWorldConquest.Simulation
                     break;
                 case EventKind.InactiveLeaves:
                     InactiveLeaves(e);
+                    break;
+                case EventKind.TribeTick:
+                    TribeTick(e);
                     break;
             }
             EventApplied?.Invoke(e);

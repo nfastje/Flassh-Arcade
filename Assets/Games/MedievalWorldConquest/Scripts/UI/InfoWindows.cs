@@ -10,6 +10,8 @@ namespace MedievalWorldConquest
     public class UiLinks
     {
         public Action<int> OpenVillage, OpenPlayer, OpenReport, ShowOnMap, SendTroops, SwitchTo, SendResources, ShowInRanking;
+        /// <summary>Tribes (diplomacy worlds): a tribe's window, inviting or expelling a player, naming a target village.</summary>
+        public Action<int> OpenTribe, InviteToTribe, ExpelFromTribe, SetTribeTarget;
     }
 
     /// <summary>
@@ -111,9 +113,16 @@ namespace MedievalWorldConquest
 
             bool mine = v.OwnerId == world.HumanPlayer?.Id;
             var owner = world.FindPlayer(v.OwnerId);
+            var ownerTribe = world.TribeOf(owner);
             body.Add(owner == null
                 ? Line("Owner: ", "barbarians (nobody)")
-                : Line("Owner: ", (owner.IsHuman ? $"{owner.Name} (you)" : owner.Name, (Action)(() => links.OpenPlayer(owner.Id)))));
+                : ownerTribe == null
+                    ? Line("Owner: ", (owner.IsHuman ? $"{owner.Name} (you)" : owner.Name, (Action)(() => links.OpenPlayer(owner.Id))))
+                    : Line("Owner: ", (owner.IsHuman ? $"{owner.Name} (you)" : owner.Name, (Action)(() => links.OpenPlayer(owner.Id))),
+                        ($"[{ownerTribe.Tag}]", (Action)(() => links.OpenTribe(ownerTribe.Id)))));
+            if (owner != null && !mine && world.AreFriendly(world.HumanPlayer.Id, owner.Id))
+                body.Add(Text(world.TribeOf(world.HumanPlayer) == ownerTribe ? "A tribe mate: attacking them gets you thrown out of the tribe."
+                    : "Your tribe has a pact with theirs: attacking them breaks it.", "row-info", "protection-note"));
             body.Add(Line($"Location: ({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}  ·  {world.TerrainAt(v.X, v.Y)}" + (home != null && home != v ? $"  ·  {World.Distance(home, v):0.0} fields from {home.Name}" : "")));
             body.Add(Line($"Points: {v.Points:N0}" + (mine && v.Loyalty < World.MaxLoyalty ? $"  ·  loyalty {Math.Floor(v.Loyalty):0}" : "")));
             if (owner != null && !mine && world.IsProtected(owner.Id))
@@ -126,6 +135,11 @@ namespace MedievalWorldConquest
             if (v != home && home != null && home.Level(BuildingType.Market) > 0)
                 actions.Add(ButtonWith("Send resources", () => links.SendResources(v.Id), "btn", "btn--small"));
             if (mine && v != home) actions.Add(ButtonWith("Switch to", () => links.SwitchTo(v.Id), "btn", "btn--small"));
+            // A tribe leader names targets for the tribe.
+            var myTribe = world.TribeOf(world.HumanPlayer);
+            if (myTribe != null && myTribe.LeaderId == world.HumanPlayer.Id && !mine && !world.AreFriendly(world.HumanPlayer.Id, v.OwnerId))
+                actions.Add(ButtonWith(myTribe.TargetVillageId == v.Id && myTribe.TargetUntil > world.Now ? "Tribe target" : "Make tribe target",
+                    () => links.SetTribeTarget(v.Id), "btn", "btn--small"));
             actions.Add(ButtonWith("Show on map", () => links.ShowOnMap(v.Id), "btn", "btn--small"));
             body.Add(actions);
 
@@ -172,9 +186,17 @@ namespace MedievalWorldConquest
             body.Add(Text("What you know", "heading"));
             var scouted = world.LatestScouting(v.Id);
             var seen = world.LatestSighting(v.Id);
+            // What tribe mates have seen, as Tribal Wars tribes share their reports.
+            var intel = world.TribeIntel(v.Id);
+            if (intel.note != null)
+            {
+                body.Add(Line($"{intel.seer.Name} (tribe mate) saw it {Clock(intel.note.SeenAt)}:"));
+                body.Add(TroopIcons(intel.note.SeenTroops));
+                body.Add(Line($"Wall: level {intel.note.SeenWall}"));
+            }
             if (scouted == null && seen == null)
             {
-                body.Add(Text("Nothing yet. Send scouts to see its buildings, stores and defenders.", "row-info"));
+                if (intel.note == null) body.Add(Text("Nothing yet. Send scouts to see its buildings, stores and defenders.", "row-info"));
                 return;
             }
             if (seen != null)
@@ -255,11 +277,29 @@ namespace MedievalWorldConquest
             var villages = new List<Village>(world.VillagesOf(p.Id));
             int points = 0;
             foreach (var v in villages) points += v.Points;
-            string now = $"{villages.Count}|{points}|{world.PlayerVillage?.Id}|{(int)(world.Now / 60)}";
+            string now = $"{villages.Count}|{points}|{world.PlayerVillage?.Id}|{(int)(world.Now / 60)}|{p.TribeId}|{world.HumanPlayer?.TribeId}|{world.HumanPlayer?.Invited.Count}";
             if (now == signature) return;
             signature = now;
             SetText(title, p.IsHuman ? $"{p.Name} (you)" : p.Name);
             body.Clear();
+
+            // Their tribe, and what the player can do about it.
+            if (world.Diplomacy)
+            {
+                var theirs = world.TribeOf(p);
+                var mine = world.TribeOf(world.HumanPlayer);
+                body.Add(theirs == null ? Line("Tribe: none")
+                    : Line("Tribe: ", ($"{theirs.Name} [{theirs.Tag}]", (Action)(() => links.OpenTribe(theirs.Id))), theirs.LeaderId == p.Id ? "  (leader)" : ""));
+                if (!p.IsHuman && mine != null && mine.LeaderId == world.HumanPlayer.Id)
+                {
+                    var tribeActions = Element("option-row", "info-actions");
+                    int pid = p.Id;
+                    if (theirs == mine) tribeActions.Add(ButtonWith("Expel from tribe", () => links.ExpelFromTribe(pid), "btn", "btn--small"));
+                    else if (p.Personality != AiPersonality.Inactive && !p.Quit)
+                        tribeActions.Add(ButtonWith(world.HumanPlayer.Invited.Contains(pid) ? "Invited" : "Invite to your tribe", () => links.InviteToTribe(pid), "btn", "btn--small"));
+                    body.Add(tribeActions);
+                }
+            }
 
             var rankings = world.Rankings();
             int rank = rankings.FindIndex(r => r.Player == p) + 1;

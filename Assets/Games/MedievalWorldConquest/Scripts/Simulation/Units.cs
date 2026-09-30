@@ -18,7 +18,7 @@ namespace MedievalWorldConquest.Simulation
         MountedArcher = 10,
     }
 
-    /// <summary>What kind of attack a unit makes; defenders use their matching defence value against it (from Phase 4).</summary>
+    /// <summary>What kind of attack a unit makes; defenders use their matching defense value against it (from Phase 4).</summary>
     public enum UnitClass
     {
         Infantry,
@@ -72,7 +72,7 @@ namespace MedievalWorldConquest.Simulation
             new UnitDef
             {
                 Type = UnitType.Swordsman, Name = "Swordsman", Class = UnitClass.Infantry,
-                Description = "Heavily armoured defender, strong against infantry. Slow on the march.",
+                Description = "Heavily armored defender, strong against infantry. Slow on the march.",
                 Building = BuildingType.Barracks, RequiredLevel = 1, Cost = new Cost(30, 30, 70, 1), BaseSeconds = 1500,
                 Attack = 25, DefenseInfantry = 50, DefenseCavalry = 25, DefenseArcher = 40, MinutesPerField = 22, Carry = 15,
                 ResearchCost = new Cost(900, 800, 780), ResearchRequires = new[] { new Requirement(BuildingType.Smithy, 1) },
@@ -104,7 +104,7 @@ namespace MedievalWorldConquest.Simulation
             new UnitDef
             {
                 Type = UnitType.LightCavalry, Name = "Light Cavalry", Class = UnitClass.Cavalry,
-                Description = "Fast raider that carries off plenty of loot. Weak on defence.",
+                Description = "Fast raider that carries off plenty of loot. Weak on defense.",
                 Building = BuildingType.Stable, RequiredLevel = 3, Cost = new Cost(125, 100, 250, 4), BaseSeconds = 1800,
                 Attack = 130, DefenseInfantry = 30, DefenseCavalry = 40, DefenseArcher = 30, MinutesPerField = 10, Carry = 80,
                 ResearchCost = new Cost(2200, 2400, 2000), ResearchRequires = new[] { new Requirement(BuildingType.Stable, 3) },
@@ -112,7 +112,7 @@ namespace MedievalWorldConquest.Simulation
             new UnitDef
             {
                 Type = UnitType.HeavyCavalry, Name = "Heavy Cavalry", Class = UnitClass.Cavalry,
-                Description = "Expensive elite rider, strong at both attack and defence.",
+                Description = "Expensive elite rider, strong at both attack and defense.",
                 Building = BuildingType.Stable, RequiredLevel = 10, Cost = new Cost(200, 150, 600, 6), BaseSeconds = 3600,
                 Attack = 150, DefenseInfantry = 200, DefenseCavalry = 80, DefenseArcher = 180, MinutesPerField = 11, Carry = 50,
                 ResearchCost = new Cost(3000, 2400, 2000), ResearchRequires = new[] { new Requirement(BuildingType.Stable, 10), new Requirement(BuildingType.Smithy, 15) },
@@ -144,7 +144,7 @@ namespace MedievalWorldConquest.Simulation
             {
                 // Tribal Wars' mounted archer: a fast rider that attacks as an archer, which few defenders stand up to.
                 Type = UnitType.MountedArcher, Name = "Mounted Archer", Class = UnitClass.Archer,
-                Description = "Fast rider who attacks as an archer, which spearmen and swordsmen defend against badly. Weak on defence.",
+                Description = "Fast rider who attacks as an archer, which spearmen and swordsmen defend against badly. Weak on defense.",
                 Building = BuildingType.Stable, RequiredLevel = 5, Cost = new Cost(250, 100, 150, 5), BaseSeconds = 2700,
                 Attack = 120, DefenseInfantry = 40, DefenseCavalry = 30, DefenseArcher = 50, MinutesPerField = 10, Carry = 50,
                 ResearchCost = new Cost(3000, 2400, 2000), ResearchRequires = new[] { new Requirement(BuildingType.Stable, 5) },

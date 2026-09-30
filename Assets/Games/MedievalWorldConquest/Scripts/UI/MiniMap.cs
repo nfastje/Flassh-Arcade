@@ -8,7 +8,7 @@ namespace MedievalWorldConquest
 {
     /// <summary>
     /// The whole world in a small square: dim terrain, a dot for every village (the player's yellow, barbarians
-    /// grey, other lords in their colours), the unsettled wilds beyond the growing circle darker still, and a frame
+    /// gray, other lords in their colors), the unsettled wilds beyond the growing circle darker still, and a frame
     /// showing the part of the map in view. Clicking or dragging on it moves the map there.
     /// </summary>
     public class MiniMap
@@ -22,7 +22,7 @@ namespace MedievalWorldConquest
         public VisualElement Root { get; }
 
         readonly VisualElement frame;
-        readonly Action<Vector2> centreOn;
+        readonly Action<Vector2> centerOn;
         Texture2D texture;
         Color32[] terrain, pixels;
         int terrainSeed;
@@ -32,10 +32,10 @@ namespace MedievalWorldConquest
         static readonly Color32 Grass = new Color32(74, 98, 52, 255), Forest = new Color32(46, 70, 38, 255);
         static readonly Color32 Hills = new Color32(98, 90, 76, 255), Water = new Color32(40, 66, 106, 255);
 
-        /// <param name="centreOn">Moves the map view to a point, in map fields.</param>
-        public MiniMap(Action<Vector2> centreOn)
+        /// <param name="centerOn">Moves the map view to a point, in map fields.</param>
+        public MiniMap(Action<Vector2> centerOn)
         {
-            this.centreOn = centreOn;
+            this.centerOn = centerOn;
             Root = Element("minimap");
             Root.style.width = Width;
             Root.style.height = Height;
@@ -64,7 +64,7 @@ namespace MedievalWorldConquest
         void Pick(Vector2 local)
         {
             float w = Math.Max(1f, Root.layout.width), h = Math.Max(1f, Root.layout.height);
-            centreOn(new Vector2(Mathf.Clamp01(local.x / w) * World.MapSize, (1f - Mathf.Clamp01(local.y / h)) * World.MapSize));
+            centerOn(new Vector2(Mathf.Clamp01(local.x / w) * World.MapSize, (1f - Mathf.Clamp01(local.y / h)) * World.MapSize));
         }
 
         public void Refresh(World world, Rect viewInFields)
@@ -116,14 +116,14 @@ namespace MedievalWorldConquest
         {
             int size = World.MapSize * PixelsPerField;
             // The wilds beyond the settled circle (and its ragged edge) are darker.
-            double centre = size / 2.0, settled = (world.SpawnRadius + World.RingSpread) * PixelsPerField;
+            double center = size / 2.0, settled = (world.SpawnRadius + World.RingSpread) * PixelsPerField;
             double settled2 = settled * settled;
             for (int y = 0; y < size; y++)
             {
-                double dy = y + 0.5 - centre;
+                double dy = y + 0.5 - center;
                 for (int x = 0; x < size; x++)
                 {
-                    double dx = x + 0.5 - centre;
+                    double dx = x + 0.5 - center;
                     var c = terrain[y * size + x];
                     if (dx * dx + dy * dy > settled2) c = new Color32((byte)(c.r / 2), (byte)(c.g / 2), (byte)(c.b / 2), 255);
                     pixels[y * size + x] = c;
@@ -143,7 +143,7 @@ namespace MedievalWorldConquest
             texture.Apply(false, false);
         }
 
-        /// <summary>A square dot centred on a field; <paramref name="radius"/> 1 is 3 x 3 pixels (1.5 fields).</summary>
+        /// <summary>A square dot centered on a field; <paramref name="radius"/> 1 is 3 x 3 pixels (1.5 fields).</summary>
         void Dot(int fx, int fy, Color color, int radius, int size)
         {
             Color32 c = color;

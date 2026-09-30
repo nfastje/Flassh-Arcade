@@ -35,7 +35,7 @@ namespace MedievalWorldConquest.Tests
             var f = flat.UnitCost(UnitType.Nobleman);
             var c = coins.UnitCost(UnitType.Nobleman);
             Assert.AreEqual((20000, 25000, 20000), (f.Wood, f.Clay, f.Iron));
-            Assert.AreEqual((40000, 50000, 50000), (c.Wood, c.Clay, c.Iron));
+            Assert.AreEqual((20000, 25000, 25000), (c.Wood, c.Clay, c.Iron));
             Assert.AreEqual(Units.Get(UnitType.Axeman).Cost.Wood, coins.UnitCost(UnitType.Axeman).Wood, "other units are the same");
         }
 
@@ -48,7 +48,7 @@ namespace MedievalWorldConquest.Tests
 
             Assert.AreEqual(MintStatus.Ok, world.MintCoins(v, 1).Status);
             Assert.AreEqual(1, human.Coins);
-            Assert.AreEqual(1000000 - 28000, v.Wood, 1e-6);
+            Assert.AreEqual(1000000 - 14000, v.Wood, 1e-6);
             Assert.AreEqual(RecruitStatus.Ok, world.CheckRecruit(v, UnitType.Nobleman, 1).Status);
             Assert.AreEqual(RecruitStatus.NeedsCoins, world.CheckRecruit(v, UnitType.Nobleman, 2).Status);
 

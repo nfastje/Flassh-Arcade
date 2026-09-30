@@ -153,7 +153,7 @@ namespace MedievalWorldConquest
             if (tier >= 1) c.Bricks(left, Ground, right, Ground + 12, Stone);
             if (tier >= 2)
             {
-                c.Planks(left + 8, top, right - 8, top + 16, DarkWood); // upper storey
+                c.Planks(left + 8, top, right - 8, top + 16, DarkWood); // upper story
                 c.Rect(left + 20, top + 4, left + 28, top + 12, Window);
                 c.Rect(right - 28, top + 4, right - 20, top + 12, Window);
                 top += 16;
@@ -553,7 +553,7 @@ namespace MedievalWorldConquest
 
             public Canvas(bool outline = true) => this.outline = outline;
 
-            /// <summary>Scales a colour's brightness but not its transparency (Color * float would scale both).</summary>
+            /// <summary>Scales a color's brightness but not its transparency (Color * float would scale both).</summary>
             static Color Shade(Color c, float s) => new Color(c.r * s, c.g * s, c.b * s, c.a);
 
             void Set(int x, int y, Color color)

@@ -41,7 +41,7 @@ namespace MedievalWorldConquest.Simulation
     /// event) and plays by exactly the same rules as the player, through the same calls: it queues buildings from a
     /// build plan, trains troops to keep its army in its preferred mix, raids nearby barbarians for resources, and,
     /// once beginner protection is over, scouts and attacks other players it thinks it can beat. It only knows
-    /// another player's defences from what its own scouts and battles have seen; barbarian villages it simply knows.
+    /// another player's defenses from what its own scouts and battles have seen; barbarian villages it simply knows.
     /// </summary>
     public partial class World
     {
@@ -94,7 +94,9 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>A newcomer: builds slowly (a turn every hour or so), trains a handful of defenders, never attacks or expands.</summary>
         static readonly AiStyle NoobStyle = new AiStyle
         {
-            BuildRatios = new[] { 0.55, 1.0, 1.0, 0.9, 0.75, 0.8, 0.4, 0.2, 0.0, 0.3, 0, 0, 0.3, 0.0, 0.5 },
+            // (Noobs build their Headquarters, smithy and market further than they used to, so the villages they leave
+            // behind are nearer academy-ready for whoever takes them.)
+            BuildRatios = new[] { 0.7, 1.0, 1.0, 0.9, 0.75, 0.8, 0.4, 0.2, 0.0, 0.3, 0, 0, 0.55, 0.3, 0.5 },
             UnitWeights = new[] { 0.6, 0.3, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 },
             MilitaryShare = 0.15, Aggression = 0, ConquersPlayers = false,
             Expands = false, TurnMultiplier = 8, MaxStage = 10, TroopPopulationPerStage = 15,
@@ -116,7 +118,7 @@ namespace MedievalWorldConquest.Simulation
         double SkillThinkMinutes => Settings.RivalSkill == AiSkill.Easy ? 30 : Settings.RivalSkill == AiSkill.Hard ? 8 : 15;
         double SkillMilitary => Settings.RivalSkill == AiSkill.Easy ? 0.75 : Settings.RivalSkill == AiSkill.Hard ? 1.15 : 1;
         double SkillAggression => Settings.RivalSkill == AiSkill.Easy ? 0.5 : Settings.RivalSkill == AiSkill.Hard ? 1.3 : 1;
-        /// <summary>How much stronger than the expected defence a lord wants its attack to be (at the worst luck).</summary>
+        /// <summary>How much stronger than the expected defense a lord wants its attack to be (at the worst luck).</summary>
         double SkillAttackMargin => Settings.RivalSkill == AiSkill.Easy ? 1.6 : Settings.RivalSkill == AiSkill.Hard ? 1.15 : 1.3;
         int SkillMaxRaids => Settings.RivalSkill == AiSkill.Easy ? 1 : Settings.RivalSkill == AiSkill.Hard ? 5 : 3;
 
@@ -160,13 +162,16 @@ namespace MedievalWorldConquest.Simulation
             if (own.Count == 0) return; // no villages left: the lord is out of the game
 
             var style = StyleOf(lord.Personality);
+            if (Diplomacy) AiRecallSupport(lord);
             foreach (var v in own)
             {
                 Touch(v);
+                if (Diplomacy) AiSupportTribe(lord, v, style);
                 AiSpend(lord, v, style);
                 AiConquer(lord, v, style); // a nobleman train first, then the main army; raiders go with what's left
                 AiAttack(lord, v, style);
                 AiRaid(lord, v, style);
+                AiShipToAcademy(lord, v, style);
                 AiTrade(lord, v);
             }
             ScheduleAiThink(lord, AiThinkSeconds(lord, own));
@@ -201,12 +206,13 @@ namespace MedievalWorldConquest.Simulation
 
             // With an academy, noblemen come first: the lord saves up for them rather than spending on anything
             // else, unless its stores are about to overflow.
-            // On a gold-coin world, a nobleman needs a free slot first: coins are minted (and saved up for) the same way.
-            if (troopsDue && WantsNobles(v))
+            // On a gold-coin world, a nobleman needs a free slot first: coins are minted (and saved up for) the same
+            // way, and they come before the army's share: expansion runs on them.
+            if ((troopsDue || Settings.GoldCoins) && WantsNobles(v))
             {
                 if (FreeNobleSlots(lord) <= 0)
                 {
-                    var coin = MintCoins(v, 1);
+                    var coin = MintCoins(v, Math.Max(1, CheckMint(v, 1).MaxAffordable));
                     if (coin.Status == MintStatus.Ok) lord.SpentOnTroops += coin.Total.Wood + coin.Total.Clay + coin.Total.Iron;
                     else if (coin.Status == MintStatus.NotEnoughResources && !double.IsInfinity(coin.AffordableIn) && FullestStock(v) < 0.9) return;
                 }
@@ -215,6 +221,19 @@ namespace MedievalWorldConquest.Simulation
                     var noble = Recruit(v, UnitType.Nobleman, 1);
                     if (noble.Status == RecruitStatus.Ok) lord.SpentOnTroops += noble.Total.Wood + noble.Total.Clay + noble.Total.Iron;
                     else if (noble.Status == RecruitStatus.NotEnoughResources && !double.IsInfinity(noble.AffordableIn) && FullestStock(v) < 0.9) return;
+                }
+            }
+
+            // Between campaigns, an academy puts its surplus into coins: the slots the next conquests will need.
+            else if (Settings.GoldCoins && style.Expands && v.Level(BuildingType.Academy) > 0)
+            {
+                int spare = int.MaxValue;
+                foreach (ResourceType r in ResourceTypes)
+                    spare = Math.Min(spare, (int)((v.Stock(r) - 0.4 * v.StorageCapacity) / CoinCost.Get(r)));
+                if (spare >= 1)
+                {
+                    var coin = MintCoins(v, spare);
+                    if (coin.Status == MintStatus.Ok) lord.SpentOnTroops += coin.Total.Wood + coin.Total.Clay + coin.Total.Iron;
                 }
             }
 
@@ -299,6 +318,9 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>How many stages a build plan has; a lord's own limit may stop it sooner.</summary>
         public const int PlanStages = 40;
 
+        /// <summary>The plan stage after which a lord who expands goes straight for the academy (mines at about 12). (Tuning value.)</summary>
+        public static int AcademyRushStage = 12;
+
         static readonly Dictionary<AiPersonality, List<(BuildingType type, int level, int stage)>> Plans =
             new Dictionary<AiPersonality, List<(BuildingType type, int level, int stage)>>();
 
@@ -368,6 +390,14 @@ namespace MedievalWorldConquest.Simulation
                         Reach(BuildingType.Barracks, 1);
                         Reach(BuildingType.Headquarters, 5);
                         Reach(BuildingType.Smithy, 2);
+                    }
+                    // And, as Tribal Wars players do once their mines are going, a rush for the academy: its
+                    // Headquarters, smithy and market before most else.
+                    if (stage == AcademyRushStage && style.Expands)
+                    {
+                        Reach(BuildingType.Headquarters, 20);
+                        Reach(BuildingType.Smithy, 20);
+                        Reach(BuildingType.Market, 10);
                     }
                 }
                 Plans[personality] = plan;
@@ -476,7 +506,7 @@ namespace MedievalWorldConquest.Simulation
         bool IsFarm(Player lord, Village t)
         {
             if (t.IsBarbarian) return true;
-            if (t.OwnerId == lord.Id || IsProtected(t.OwnerId)) return false;
+            if (t.OwnerId == lord.Id || IsProtected(t.OwnerId) || AreFriendly(lord.Id, t.OwnerId)) return false;
             var owner = FindPlayer(t.OwnerId);
             return owner != null && (owner.Personality == AiPersonality.Noob || owner.Personality == AiPersonality.Inactive);
         }
@@ -561,6 +591,137 @@ namespace MedievalWorldConquest.Simulation
             }
         }
 
+        // ---------------------------------------------------------------- feeding the academy
+
+        /// <summary>How far (in fields) a lord's villages send resources to its academy.</summary>
+        public const double AiShippingRange = 40;
+
+        /// <summary>
+        /// As Tribal Wars players do, a lord's villages without an academy send their surplus by merchant to the
+        /// nearest one that has one, where it becomes coins (or noblemen): always on a gold-coin world, and on a flat
+        /// one while that academy is saving for noblemen. Each keeps enough back to go on growing. A satellite lord
+        /// in the endgame feeds the nearest academy of its faction's winning side instead (its own included).
+        /// </summary>
+        void AiShipToAcademy(Player lord, Village v, AiStyle style)
+        {
+            bool feeding = FactionsFormed && IsSatellite(TribeOf(lord));
+            if (v.Level(BuildingType.Market) <= 0 || (!feeding && (!style.Expands || v.Level(BuildingType.Academy) > 0))) return;
+            // Only true surplus: the village first builds as fast as it can (its queue full) unless its plan is done
+            // or its stores are overflowing, and it keeps back what its own next building needs.
+            if (v.Queue.Count < MaxBuildQueue && !PlanDone(lord, v) && FullestStock(v) < 0.9) return;
+            Village academy = feeding ? CoreAcademyNear(lord, v) : null;
+            double nearest = AiShippingRange;
+            if (!feeding)
+                foreach (var own in VillagesOf(lord.Id))
+                {
+                    if (own == v || own.Level(BuildingType.Academy) <= 0) continue;
+                    double d = Distance(v, own);
+                    if (d <= nearest)
+                    {
+                        nearest = d;
+                        academy = own;
+                    }
+                }
+            if (academy == null || (!feeding && !Settings.GoldCoins && !WantsNobles(academy))) return;
+            int merchants = MerchantsFree(v);
+            if (merchants <= 0) return;
+
+            Touch(academy);
+            int capacity = merchants * Buildings.MerchantCarry;
+            var goods = new int[3];
+            int total = 0;
+            // Keep back what its next building (and its own academy, once it can build one) will cost.
+            var next = AiNextBuilding(lord, v);
+            var reserve = next.HasValue ? Buildings.CostOf(next.Value, v.NextLevel(next.Value)) : default;
+            if (Buildings.UnmetRequirement(BuildingType.Academy, v) == null)
+            {
+                var academyCost = Buildings.CostOf(BuildingType.Academy, 1);
+                reserve = new Cost(Math.Max(reserve.Wood, academyCost.Wood), Math.Max(reserve.Clay, academyCost.Clay), Math.Max(reserve.Iron, academyCost.Iron));
+            }
+            foreach (ResourceType r in ResourceTypes)
+            {
+                double surplus = v.Stock(r) - Math.Max(0.4 * v.StorageCapacity, reserve.Get(r));
+                double room = academy.StorageCapacity - academy.Stock(r);
+                goods[(int)r] = (int)Math.Max(0, Math.Min(surplus, room));
+                total += goods[(int)r];
+            }
+            if (total < 2000) return;
+            if (total > capacity)
+                for (int i = 0; i < 3; i++) goods[i] = (int)((long)goods[i] * capacity / total);
+            SendResources(v, academy, new Cost(goods[0], goods[1], goods[2]));
+        }
+
+        /// <summary>The nearest academy (within shipping range) of a lord on the winning side of this satellite lord's faction.</summary>
+        Village CoreAcademyNear(Player lord, Village v)
+        {
+            var mine = TribeOf(lord);
+            Village best = null;
+            double nearest = double.MaxValue;
+            foreach (var u in VillagesNear(v.X, v.Y, AiShippingRange))
+            {
+                if (u.IsBarbarian || u.OwnerId == lord.Id || u.Level(BuildingType.Academy) <= 0) continue;
+                var t = TribeOf(u.OwnerId);
+                if (t == null || t.FactionId != mine.FactionId || !OnCoreSide(t)) continue;
+                double d = Distance(v, u);
+                if (d < nearest)
+                {
+                    nearest = d;
+                    best = u;
+                }
+            }
+            return best;
+        }
+
+        // ---------------------------------------------------------------- helping the tribe
+
+        /// <summary>How far (in fields) lords send support to tribe mates under attack, and the most helpers per attack.</summary>
+        public const double AiSupportRange = 20;
+        public const int AiMaxSupporters = 3;
+        static readonly UnitType[] DefensiveUnits = { UnitType.Spearman, UnitType.Swordsman, UnitType.Archer, UnitType.HeavyCavalry };
+
+        /// <summary>
+        /// A tribe mate's village is under attack: a lord near enough to get there first sends part of its defenders
+        /// (defenders send more, warlords less), and calls them home once the danger has passed.
+        /// </summary>
+        void AiSupportTribe(Player lord, Village v, AiStyle style)
+        {
+            var tribe = TribeOf(lord);
+            if (tribe == null || tribe.HelpCalls.Count == 0) return;
+            double share = lord.Personality == AiPersonality.Defender ? 0.5 : lord.Personality == AiPersonality.Warlord ? 0.15 : lord.Personality == AiPersonality.Noob ? 0.2 : 0.3;
+            foreach (var call in tribe.HelpCalls)
+            {
+                if (call.OwnerId == lord.Id || call.Supporters >= AiMaxSupporters || call.ArriveTime <= Now) continue;
+                var host = FindVillage(call.VillageId);
+                if (host == null || host.OwnerId != call.OwnerId || Distance(v, host) > AiSupportRange) continue;
+                var party = new int[Units.Count];
+                int total = 0;
+                foreach (var type in DefensiveUnits)
+                {
+                    party[(int)type] = (int)(v.TroopCount(type) * share);
+                    total += party[(int)type];
+                }
+                if (total < 20) return; // too little to matter (and to spare)
+                var slowest = SlowestUnit(party);
+                if (slowest == null || Now + TravelSeconds(v, host, slowest.Value) > call.ArriveTime) continue; // too late to help
+                if (Send(v, host, party, CommandKind.Support) == null) continue;
+                lord.SupportPlacements.Add(new SupportPlacement { HostId = host.Id, FromId = v.Id, Until = call.ArriveTime + 3600 });
+                return; // one at a time
+            }
+        }
+
+        /// <summary>Calls home support sent to tribe mates once the attacks it was sent against are over.</summary>
+        void AiRecallSupport(Player lord)
+        {
+            for (int i = lord.SupportPlacements.Count - 1; i >= 0; i--)
+            {
+                var p = lord.SupportPlacements[i];
+                if (p.Until > Now) continue;
+                lord.SupportPlacements.RemoveAt(i);
+                var host = FindVillage(p.HostId);
+                if (host != null) Recall(host, p.FromId);
+            }
+        }
+
         /// <summary>A village's own troops of a kind out on attacks or on their way home.</summary>
         int Away(Village v, UnitType type)
         {
@@ -640,7 +801,11 @@ namespace MedievalWorldConquest.Simulation
         /// </summary>
         void AiAttack(Player lord, Village v, AiStyle style)
         {
-            if (AiRandom(lord, 11) >= style.Aggression * SkillAggression) return;
+            // A tribe's named target draws its members in, whatever their mood; otherwise war is a matter of temperament.
+            var tribe = Diplomacy ? TribeOf(lord) : null;
+            var target = tribe != null && tribe.TargetUntil > Now ? FindVillage(tribe.TargetVillageId) : null;
+            bool tribeOp = target != null && Distance(v, target) <= AiAttackRange && AiRandom(lord, 13) < 0.5;
+            if (!tribeOp && AiRandom(lord, 11) >= style.Aggression * SkillAggression) return;
 
             var offense = new int[Units.Count];
             int power = 0;
@@ -656,21 +821,24 @@ namespace MedievalWorldConquest.Simulation
             // otherwise it judges them by a cautious guess from their size.
             // Candidates are ranked by how tempting they are first, and only then checked (a battle worked out in
             // advance each) from the most tempting down, stopping at the first it can beat: the same choice as
-            // checking them all, for a fraction of the work in a crowded neighbourhood.
+            // checking them all, for a fraction of the work in a crowded neighborhood.
             bool hasScouts = v.TroopCount(UnitType.Scout) > 0;
             var underAttack = AttackTargets(lord);
             var attackCandidates = Emptied(ref this.attackCandidates);
             foreach (var t in VillagesNear(v.X, v.Y, AiAttackRange, Emptied(ref nearby)))
             {
                 // War is for players who fight back; barbarians, noobs and inactive players are farmed instead.
-                if (t.IsBarbarian || t.OwnerId == lord.Id || IsProtected(t.OwnerId) || IsFarm(lord, t)) continue;
+                if (t.IsBarbarian || t.OwnerId == lord.Id || IsProtected(t.OwnerId) || IsFarm(lord, t) || AreFriendly(lord.Id, t.OwnerId)) continue;
                 var note = NoteFor(lord, t.Id, false);
                 if (note != null && (note.AvoidUntil > Now || note.NextRaidAt > Now)) continue;
                 if (underAttack.Contains(t.Id)) continue;
                 bool scoutFirst = !Known(note) && hasScouts;
-                double score = (t.Points + 100) / (2 + Distance(v, t));
+                // Near and big enough to be worth it, but the biggest aren't singled out: size counts for less and less.
+                double score = (20 * Math.Sqrt(t.Points) + 100) / (2 + Distance(v, t));
                 if (scoutFirst) score *= 0.5; // a sure thing beats a maybe
                 if (t.OwnerId == lord.LastAttackerId) score *= 2;
+                if (AtWar(lord.Id, t.OwnerId)) score *= 2;     // the tribe's enemies first
+                if (t == target) score *= 4;                   // and the tribe's target above all
                 attackCandidates.Add((t, score));
             }
             attackCandidates.Sort((a, b) => b.score.CompareTo(a.score));
@@ -679,7 +847,8 @@ namespace MedievalWorldConquest.Simulation
             bool bestNeedsScouting = false;
             foreach (var (t, _) in attackCandidates)
             {
-                var note = NoteFor(lord, t.Id, false);
+                // What the lord or its tribe mates have seen there.
+                var note = Diplomacy ? SharedSighting(lord, t.Id).note : NoteFor(lord, t.Id, false);
                 bool known = Known(note);
                 if (known && !Beatable(offense, note.SeenTroops, note.SeenAt, note.SeenWall)) continue;
                 if (!known && !hasScouts && !Beatable(offense, GuessDefenders(t), Now, GuessWall(t))) continue;
@@ -698,7 +867,7 @@ namespace MedievalWorldConquest.Simulation
                 return;
             }
 
-            var seen = NoteFor(lord, best.Id, false);
+            var seen = Diplomacy ? SharedSighting(lord, best.Id).note : NoteFor(lord, best.Id, false);
             int wall = Known(seen) ? seen.SeenWall : GuessWall(best);
             var aim = wall > 0 && offense[(int)UnitType.Ram] == 0 ? BuildingType.Wall : BuildingType.Barracks;
             var command = Send(v, best, offense, CommandKind.Attack, aim);
@@ -747,18 +916,22 @@ namespace MedievalWorldConquest.Simulation
             && StyleOf(FindPlayer(v.OwnerId)?.Personality ?? AiPersonality.None).Expands;
 
         /// <summary>
-        /// With a full set of noblemen at home, sends them with the village's offensive troops to win over a village
-        /// nearby: a barbarian one, or (for most personalities) a player's it knows or guesses it can beat. Sticks
-        /// with its target until it's taken or an attack on it fails.
+        /// With a full set of noblemen at home, sends them as a noble train with the village's offensive troops to
+        /// win over a village nearby: a barbarian one, or (for most personalities) a player's it knows or guesses it
+        /// can beat. Sticks with its target until it's taken or an attack on it fails. A village a satellite of its
+        /// faction has handed over comes first, then the tribe's target: for those, any noblemen at home go at once.
         /// </summary>
         void AiConquer(Player lord, Village v, AiStyle style)
         {
             int nobles = v.TroopCount(UnitType.Nobleman);
-            if (!style.Expands || nobles < NoblesWanted) return;
+            if (!style.Expands || nobles == 0) return;
+            var handed = HandedOverInReach(lord, v);
+            var tribeTarget = handed ?? TribeTargetInReach(lord, v, style);
+            if (nobles < NoblesWanted && tribeTarget == null) return;
             var underAttack = AttackTargets(lord);
 
-            var target = FindVillage(lord.ConquestTargetId);
-            if (target == null || !ConquestTargetOk(lord, v, target, style))
+            var target = tribeTarget ?? FindVillage(lord.ConquestTargetId);
+            if (tribeTarget == null && (target == null || !ConquestTargetOk(lord, v, target, style)))
             {
                 target = PickConquestTarget(lord, v, style, underAttack);
                 lord.ConquestTargetId = target?.Id ?? -1;
@@ -768,8 +941,22 @@ namespace MedievalWorldConquest.Simulation
             var army = new int[Units.Count];
             foreach (var type in OffensiveUnits) army[(int)type] = v.TroopCount(type);
             army[(int)UnitType.Nobleman] = nobles;
-            var note = NoteFor(lord, target.Id, false);
+            // (What tribe mates have seen counts too: their attacks clear the way.)
+            var note = Diplomacy ? SharedSighting(lord, target.Id).note : NoteFor(lord, target.Id, false);
             bool known = Known(note);
+            if (target == handed)
+            {
+                // Its defenders stand aside: only the villagers and the wall to get past, so each nobleman takes just
+                // the escort that gets him through, and the army stays home.
+                var sizing = (int[])army.Clone();
+                sizing[(int)UnitType.Nobleman] = Math.Max(2, nobles);
+                var escort = SplitTrain(sizing, TrainEscort.Minimal, target.Level(BuildingType.Wall))[1];
+                var party = new int[Units.Count];
+                for (int i = 0; i < Units.Count; i++) party[i] = Math.Min(army[i], escort[i] * nobles);
+                party[(int)UnitType.Nobleman] = nobles;
+                SendTrain(v, target, party, TrainEscort.Minimal, BuildingType.Wall);
+                return;
+            }
             // The noblemen only go where the lord has seen lately (its farming scouts usually have); with no scouts
             // at all, it trusts that a barbarian village is empty and guesses at a player's.
             if (!known && v.TroopCount(UnitType.Scout) > 0 && !underAttack.Contains(target.Id))
@@ -781,28 +968,81 @@ namespace MedievalWorldConquest.Simulation
             }
             var expected = known ? note.SeenTroops : target.IsBarbarian ? NoTroops : GuessDefenders(target);
             int wall = known ? note.SeenWall : GuessWall(target);
-            // The noblemen have to live through it, so the lord wants an easy win.
-            if (!Beatable(army, expected, known ? note.SeenAt : Now, wall, maxLoss: 0.35)) return;
-            Send(v, target, army, CommandKind.Attack, BuildingType.Wall);
+            // The noblemen have to live through it, so the lord wants an easy win (less so on the tribe's target).
+            if (!Beatable(army, expected, known ? note.SeenAt : Now, wall, maxLoss: target == tribeTarget ? 0.5 : 0.35)) return;
+            SendTrain(v, target, army, TrainEscort.Minimal, BuildingType.Wall);
+        }
+
+        /// <summary>A village handed over to this lord, near enough for this village's noblemen and not already under its attack.</summary>
+        Village HandedOverInReach(Player lord, Village v)
+        {
+            if (!FactionsFormed) return null;
+            foreach (var t in VillagesNear(v.X, v.Y, FeedRange))
+                if (FedTo(t, lord.Id, Now) && t.OwnerId != lord.Id) return t;
+            return null;
+        }
+
+        /// <summary>The tribe's target, if it's one this village's noblemen can go for.</summary>
+        Village TribeTargetInReach(Player lord, Village v, AiStyle style)
+        {
+            var tribe = Diplomacy ? TribeOf(lord) : null;
+            if (tribe == null || tribe.TargetUntil <= Now) return null;
+            var t = FindVillage(tribe.TargetVillageId);
+            return t != null && ConquestTargetOk(lord, v, t, style) ? t : null;
         }
 
         bool ConquestTargetOk(Player lord, Village from, Village t, AiStyle style)
         {
-            if (t.OwnerId == lord.Id || Distance(from, t) > AiConquestRange) return false;
-            if (!t.IsBarbarian && (!style.ConquersPlayers || IsProtected(t.OwnerId))) return false;
+            if (t.OwnerId == lord.Id || Distance(from, t) > ConquestRangeOf(lord)) return false;
+            // (Once the barbarian land is nearly gone, every lord who expands turns on other players, as does anyone
+            // whose tribe has named the village its target.)
+            if (!t.IsBarbarian && ((!style.ConquersPlayers && !LateGame && !IsTribeTarget(lord, t)) || IsProtected(t.OwnerId) || AreFriendly(lord.Id, t.OwnerId))) return false;
             var note = NoteFor(lord, t.Id, false);
             return note == null || note.AvoidUntil <= Now;
         }
 
-        /// <summary>The most tempting village to win over: close and well built, barbarians' first (they're easier).</summary>
+        /// <summary>Whether a village is the target the lord's tribe has named (and still means).</summary>
+        bool IsTribeTarget(Player lord, Village t)
+        {
+            var tribe = Diplomacy ? TribeOf(lord) : null;
+            return tribe != null && tribe.TargetVillageId == t.Id && tribe.TargetUntil > Now;
+        }
+
+        /// <summary>The late game: barbarian villages are under a tenth of the world, so lords turn on each other.</summary>
+        bool LateGame => VillagesOf(-1).Count < 0.1 * Villages.Count && WorldLocked;
+
+        /// <summary>
+        /// How far a lord reaches for villages to win over: a consolidator (spread 0) no further than 10 fields, a
+        /// spreader (spread 1) up to 22.
+        /// </summary>
+        static double ConquestRangeOf(Player lord) => 10 + 12 * Math.Max(0, Math.Min(1, lord.Spread));
+
+        /// <summary>
+        /// The most tempting village to win over: well built and close (barbarians' first: they're easier). How much
+        /// "close" matters is the lord's nature: a consolidator wants what's next door, a spreader weighs a rich
+        /// village further off almost as highly.
+        /// </summary>
         Village PickConquestTarget(Player lord, Village v, AiStyle style, HashSet<int> underAttack)
         {
             Village best = null;
             double bestScore = 0;
-            foreach (var t in VillagesNear(v.X, v.Y, AiConquestRange))
+            double nearness = 0.6 + 1.2 * (1 - Math.Max(0, Math.Min(1, lord.Spread)));
+            bool late = LateGame;
+            int own = PointsOf(lord);
+            foreach (var t in VillagesNear(v.X, v.Y, ConquestRangeOf(lord)))
             {
                 if (underAttack.Contains(t.Id) || !ConquestTargetOk(lord, v, t, style)) continue;
-                double score = (t.Points + 50) / (1 + Distance(v, t)) * (t.IsBarbarian ? 1 : 0.6);
+                double score = (t.Points + 50) / Math.Pow(1 + Distance(v, t), nearness);
+                if (!t.IsBarbarian)
+                {
+                    // Players' villages are harder, until there's little else left; the weak, and enemies, first.
+                    score *= late ? 1.2 : 0.6;
+                    int theirs = PointsOf(FindPlayer(t.OwnerId));
+                    score *= 1 + 0.3 * Math.Min(3, own / (double)Math.Max(1, theirs));
+                    if (AtWar(lord.Id, t.OwnerId)) score *= 1.5;
+                    // The tribe's target: its members' attacks are wearing it down, and the noblemen follow.
+                    if (IsTribeTarget(lord, t)) score *= 3;
+                }
                 if (score > bestScore)
                 {
                     bestScore = score;

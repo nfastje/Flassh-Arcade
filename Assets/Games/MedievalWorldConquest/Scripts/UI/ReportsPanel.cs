@@ -50,7 +50,7 @@ namespace MedievalWorldConquest
             ReportKind.Attack when r.Conquered => $"Conquered: {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY}) is yours!",
             ReportKind.Defense when r.Conquered => $"Village lost: {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY}) fell to {r.AttackerPlayer}",
             ReportKind.Attack => $"{(r.AttackerWon ? "Victory" : "Defeat")}: attack on {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})",
-            ReportKind.Defense => $"{(r.AttackerWon ? "Village lost the fight" : "Defended")}: {(string.IsNullOrEmpty(r.AttackerPlayer) ? "attack" : r.AttackerPlayer)} from {r.AttackerVillage} ({r.AttackerX}|{r.AttackerY})",
+            ReportKind.Defense => $"{r.DefenderVillage} {(r.AttackerWon ? "lost the fight" : "held")}: {(string.IsNullOrEmpty(r.AttackerPlayer) ? "attack" : r.AttackerPlayer)} from {r.AttackerVillage} ({r.AttackerX}|{r.AttackerY})",
             ReportKind.ResourcesArrived => $"Resources delivered to {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})",
             _ => $"Support arrived at {r.DefenderVillage} ({r.DefenderX}|{r.DefenderY})",
         };

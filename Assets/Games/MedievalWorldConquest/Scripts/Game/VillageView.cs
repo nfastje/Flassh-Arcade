@@ -183,7 +183,7 @@ namespace MedievalWorldConquest
             if (tier == shownRingTier) return;
             shownRingTier = tier;
             var sprite = tier == 2 ? VillageArt.StoneWall : tier == 1 ? VillageArt.ReinforcedStake : VillageArt.Stake;
-            // Leave exactly enough room at the front for this tier's gate, with the neighbours tucked behind its edges.
+            // Leave exactly enough room at the front for this tier's gate, with the neighbors tucked behind its edges.
             var gate = Plots[(int)BuildingType.Wall];
             float gap = tier >= 0 ? BuildingArt.GateHalfWidth(tier) - GateOverlap : 0f;
             foreach (var piece in ring)
@@ -234,8 +234,8 @@ namespace MedievalWorldConquest
         {
             foreach (var (building, _, size) in CornerGrounds)
             {
-                var centre = Plots[(int)building] + new Vector2(0f, 0.7f);
-                if (Mathf.Abs(pos.x - centre.x) < size.x * 0.55f && Mathf.Abs(pos.y - centre.y) < size.y * 0.6f) return true;
+                var center = Plots[(int)building] + new Vector2(0f, 0.7f);
+                if (Mathf.Abs(pos.x - center.x) < size.x * 0.55f && Mathf.Abs(pos.y - center.y) < size.y * 0.6f) return true;
             }
             return false;
         }

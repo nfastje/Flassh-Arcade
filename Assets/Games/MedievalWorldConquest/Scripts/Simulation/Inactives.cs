@@ -13,16 +13,16 @@ namespace MedievalWorldConquest.Simulation
     public partial class World
     {
         /// <summary>On average one inactive player's village per this many fields of settled land (at normal density).</summary>
-        public const double FieldsPerInactive = 15;
+        public const double FieldsPerInactive = 65;
         /// <summary>On average one extra barbarian village per this many fields of settled land.</summary>
-        public const double FieldsPerExtraBarbarian = 50;
+        public const double FieldsPerExtraBarbarian = 120;
         /// <summary>Game hours between an inactive village's building steps (each picks its own wait in this range).</summary>
         public const double InactiveGrowthMinHours = 2, InactiveGrowthMaxHours = 6;
         /// <summary>
         /// The points an inactive player's village stops at: from this minimum, most small (half under about 230),
         /// a few up to about 1,300, like the players who give up on a real world.
         /// </summary>
-        public const int InactiveMinPoints = 80, InactiveMaxExtraPoints = 1200;
+        public const int InactiveMinPoints = 150, InactiveMaxExtraPoints = 3000;
 
         /// <summary>Game days an inactive player's village sits unchanged before its account is closed and it goes barbarian.</summary>
         public const double InactiveDaysBeforeLeaving = 14;
@@ -34,9 +34,9 @@ namespace MedievalWorldConquest.Simulation
         static readonly (BuildingType building, int cap, double weight)[] InactiveGrowth =
         {
             (BuildingType.TimberCamp, 25, 3), (BuildingType.ClayPit, 25, 3), (BuildingType.IronMine, 25, 3),
-            (BuildingType.Farm, 22, 2), (BuildingType.Warehouse, 22, 2), (BuildingType.Headquarters, 20, 2),
-            (BuildingType.Barracks, 15, 1), (BuildingType.Smithy, 15, 1), (BuildingType.Wall, 15, 1),
-            (BuildingType.Stable, 10, 0.5), (BuildingType.Market, 10, 0.5), (BuildingType.HidingPlace, 10, 0.5),
+            (BuildingType.Farm, 24, 2), (BuildingType.Warehouse, 24, 2), (BuildingType.Headquarters, 22, 2.5),
+            (BuildingType.Barracks, 15, 1), (BuildingType.Smithy, 20, 1.5), (BuildingType.Wall, 15, 1),
+            (BuildingType.Stable, 10, 0.5), (BuildingType.Market, 12, 1), (BuildingType.HidingPlace, 10, 0.5),
             (BuildingType.Workshop, 5, 0.2),
         };
 
@@ -68,7 +68,7 @@ namespace MedievalWorldConquest.Simulation
         {
             double r = rng.NextDouble();
             var player = NewPlayer(AiPersonality.Inactive, rng);
-            player.TargetPoints = InactiveMinPoints + (int)(InactiveMaxExtraPoints * r * r * r);
+            player.TargetPoints = InactiveMinPoints + (int)(InactiveMaxExtraPoints * r * r);
             var village = new Village { Id = NewVillageId(), Name = NewPlaceName(rng), X = x, Y = y, OwnerId = player.Id };
             village.SetUpAsNew();
             AddVillage(village);
@@ -153,20 +153,20 @@ namespace MedievalWorldConquest.Simulation
             Func<double> where = () => SpawnRadius * Math.Sqrt(rng.NextDouble());
             InactiveBacklog += area / FieldsPerInactive * InactiveShare;
             BarbarianBacklog += area / FieldsPerExtraBarbarian;
-            double centre = MapSize / 2.0;
+            double center = MapSize / 2.0;
             for (; InactiveBacklog >= 1; InactiveBacklog--)
             {
                 if (!TryFindSpot(rng, where, out int x, out int y)) continue;
-                double fromCentre = Math.Sqrt((x - centre) * (x - centre) + (y - centre) * (y - centre));
+                double fromCenter = Math.Sqrt((x - center) * (x - center) + (y - center) * (y - center));
                 // Settled long ago, so their beginner protection is long gone too.
-                SpawnInactive(x, y, rng, 1 - fromCentre / Math.Max(1, SpawnRadius)).ProtectedUntil = Now;
+                SpawnInactive(x, y, rng, 1 - fromCenter / Math.Max(1, SpawnRadius)).ProtectedUntil = Now;
             }
             for (; BarbarianBacklog >= 1; BarbarianBacklog--)
             {
                 if (!TryFindSpot(rng, where, out int x, out int y)) continue;
-                double fromCentre = Math.Sqrt((x - centre) * (x - centre) + (y - centre) * (y - centre));
+                double fromCenter = Math.Sqrt((x - center) * (x - center) + (y - center) * (y - center));
                 var village = new Village { Id = NewVillageId(), Name = BarbarianName, X = x, Y = y, OwnerId = -1 };
-                SetUpBarbarian(village, (1 - fromCentre / Math.Max(1, SpawnRadius)) * (0.3 + 0.5 * rng.NextDouble()), rng);
+                SetUpBarbarian(village, (1 - fromCenter / Math.Max(1, SpawnRadius)) * (0.3 + 0.5 * rng.NextDouble()), rng);
                 AddVillage(village);
                 ScheduleBarbarianGrowth(village);
             }

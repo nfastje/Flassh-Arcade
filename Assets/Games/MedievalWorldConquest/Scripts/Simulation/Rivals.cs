@@ -77,19 +77,30 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>Game hours between the circle's steps outward.</summary>
         public const double GrowthIntervalHours = 2;
         /// <summary>On average one new village (a lord's or a barbarian one) per this many fields of settled land.</summary>
-        public const double FieldsPerSettlement = 40;
+        public const double FieldsPerSettlement = 27;
         /// <summary>
         /// Of the lords who settle, the share who are regular players (a Raider, Defender, Balanced or Warlord);
         /// the rest are noobs. Barbarians are rare at first: most barbarian villages are left behind by noobs who quit.
         /// </summary>
-        public const double RegularLordShare = 0.35;
+        public const double RegularLordShare = 0.45;
         /// <summary>Regular lords already settled round the starting circle when a world begins (at normal density), and how close they may be to the player.</summary>
         public const int InitialLords = 3;
         public const double InitialLordMinDistance = 10;
         /// <summary>The circle stops growing once it covers the whole map, corners included.</summary>
-        public static double MaxSpawnRadius => MapSize / 2.0 * 1.42;
+        public static double MaxSpawnRadius => Math.Min(MapSize / 2.0 * 1.42, LockRadius);
 
-        /// <summary>How far out from the centre villages have appeared so far.</summary>
+        /// <summary>
+        /// The world stops growing ("locks") once its settled circle reaches the edge of the map, or, on a diplomacy
+        /// world, once a single bloc holds <see cref="LockBlocShare"/> of the players' villages: from then on the
+        /// endgame is fought over a fixed map. (Tuning values while the endgame is balanced.)
+        /// </summary>
+        public static double LockRadius = MapSize / 2.0, LockBlocShare = 0.2;
+
+        /// <summary>Whether the world has stopped growing, and when.</summary>
+        public bool WorldLocked;
+        public double LockedAt = -1;
+
+        /// <summary>How far out from the center villages have appeared so far.</summary>
         public double SpawnRadius;
         /// <summary>The fraction of a village owed by the circle's growth so far (so small steps still add up).</summary>
         public double SettlementBacklog;
@@ -112,7 +123,7 @@ namespace MedievalWorldConquest.Simulation
 
         static readonly string[] PlacePrefixes =
         {
-            "Ash", "Briar", "Crow", "Dun", "Elder", "Fox", "Grey", "Harrow", "Iron", "Kestrel", "Lark", "Mill",
+            "Ash", "Briar", "Crow", "Dun", "Elder", "Fox", "Gray", "Harrow", "Iron", "Kestrel", "Lark", "Mill",
             "North", "Oxen", "Pine", "Queen", "Red", "Salt", "Tallow", "Under", "Vale", "West", "Yarrow", "Oak",
             "Stone", "Thorn", "Raven", "Wolf", "Elm", "Black", "White", "Gold", "Hawk", "Eagle", "Bramble", "Fallow",
             "Deep", "High", "Low", "Cold",
@@ -157,8 +168,7 @@ namespace MedievalWorldConquest.Simulation
         public int PointsOf(Player p)
         {
             int points = 0;
-            foreach (var v in Villages)
-                if (v.OwnerId == p.Id) points += v.Points;
+            foreach (var v in VillagesOf(p.Id)) points += v.Points;
             return points;
         }
 
@@ -193,7 +203,7 @@ namespace MedievalWorldConquest.Simulation
             GrowTo(StartRadius, fillDisk: true);
             if (Settings.RivalDensity <= 0) return;
             int wanted = Math.Max(1, Math.Min(5, (int)Math.Round(InitialLords * Settings.RivalDensity)));
-            var centre = MapSize / 2.0;
+            var center = MapSize / 2.0;
             for (int i = 0; i < wanted; i++)
                 if (TryFindSpot(rng, () => InitialLordMinDistance + rng.NextDouble() * (StartRadius + RingSpread - InitialLordMinDistance), out int x, out int y))
                     SpawnLord(x, y, rng, RegularPersonality());
@@ -204,7 +214,7 @@ namespace MedievalWorldConquest.Simulation
         /// least, is about 150 points and just gets a barracks; stage 9 about 230; stage 19 about 800), and one in
         /// ten never stops, just grows slowly.
         /// </summary>
-        public static int NoobStageCap(double r) => r >= 0.9 ? PlanStages : 5 + (int)(14 * Math.Pow(r / 0.9, 1.5));
+        public static int NoobStageCap(double r) => r >= 0.9 ? PlanStages : 8 + (int)(20 * Math.Pow(r / 0.9, 1.2));
 
         /// <summary>The next regular personality in turn, so each kind turns up about as often as the others.</summary>
         AiPersonality RegularPersonality() => (AiPersonality)(1 + (RegularsSpawned++ + (Settings.Seed & 3)) % 4);
@@ -213,9 +223,16 @@ namespace MedievalWorldConquest.Simulation
 
         void GrowWorld(ScheduledEvent e)
         {
+            if (WorldLocked) return;
             GrowthTicks++;
             GrowTo(Math.Min(MaxSpawnRadius, SpawnRadius + RadiusPerDay * GrowthIntervalHours / 24), fillDisk: false);
-            if (SpawnRadius < MaxSpawnRadius) ScheduleWorldGrowth();
+            if (SpawnRadius >= MaxSpawnRadius || (Diplomacy && BiggestBlocShare() >= LockBlocShare))
+            {
+                WorldLocked = true;
+                LockedAt = Now;
+                return;
+            }
+            ScheduleWorldGrowth();
         }
 
         /// <summary>A repeatable random-number generator for this step of the world's growth.</summary>
@@ -252,17 +269,17 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>
-        /// A free field of land at a distance from the centre drawn from <paramref name="radius"/>, in any direction.
+        /// A free field of land at a distance from the center drawn from <paramref name="radius"/>, in any direction.
         /// Villages may be right next to each other, just not on the same field.
         /// </summary>
         bool TryFindSpot(Random rng, Func<double> radius, out int x, out int y)
         {
-            double centre = MapSize / 2.0;
+            double center = MapSize / 2.0;
             for (int attempt = 0; attempt < 40; attempt++)
             {
                 double angle = rng.NextDouble() * Math.PI * 2, r = Math.Abs(radius());
-                x = (int)Math.Round(centre + Math.Cos(angle) * r);
-                y = (int)Math.Round(centre + Math.Sin(angle) * r);
+                x = (int)Math.Round(center + Math.Cos(angle) * r);
+                y = (int)Math.Round(center + Math.Sin(angle) * r);
                 if (x < 1 || y < 1 || x > MapSize - 2 || y > MapSize - 2) continue;
                 if (TerrainAt(x, y) == TerrainType.Water || VillageAt(x, y) != null) continue;
                 return true;
@@ -310,6 +327,7 @@ namespace MedievalWorldConquest.Simulation
         {
             var lord = NewPlayer(personality, rng);
             if (personality == AiPersonality.Noob) lord.StageCap = NoobStageCap(rng.NextDouble());
+            lord.Spread = rng.NextDouble();
             var village = new Village { Id = NewVillageId(), Name = NewPlaceName(rng), X = x, Y = y, OwnerId = lord.Id };
             village.SetUpAsNew();
             AddVillage(village);

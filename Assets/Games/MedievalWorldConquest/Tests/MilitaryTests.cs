@@ -217,7 +217,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void CancellingRefundsUntrainedUnitsAndStartsTheNextBatch()
+        public void CancelingRefundsUntrainedUnitsAndStartsTheNextBatch()
         {
             var world = ArmedWorld(out var v);
             world.Recruit(v, UnitType.Spearman, 4);
@@ -233,14 +233,14 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(woodBefore + 3 * 50, v.Wood, 1e-6, "three untrained spearmen refunded");
             Assert.IsTrue(v.Recruitment[0].Started, "the axemen start straight away");
 
-            // The cancelled batch's pending event must not train a spearman.
+            // The canceled batch's pending event must not train a spearman.
             world.AdvanceTo(world.Now + Units.SecondsToTrain(UnitType.Axeman, 5));
             Assert.AreEqual(1, v.TroopCount(UnitType.Spearman));
             Assert.AreEqual(1, v.TroopCount(UnitType.Axeman));
         }
 
         [Test]
-        public void CancellingAWaitingBatchLeavesTheActiveOneAlone()
+        public void CancelingAWaitingBatchLeavesTheActiveOneAlone()
         {
             var world = ArmedWorld(out var v);
             world.Recruit(v, UnitType.Spearman, 2);

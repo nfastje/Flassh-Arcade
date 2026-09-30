@@ -245,7 +245,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void CancellingTheLastOrderRefundsIt()
+        public void CancelingTheLastOrderRefundsIt()
         {
             var world = NewWorld();
             var v = world.PlayerVillage;
@@ -261,7 +261,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void ACancelledOrdersTimerIsIgnored()
+        public void ACanceledOrdersTimerIsIgnored()
         {
             var world = NewWorld();
             var v = world.PlayerVillage;
@@ -271,7 +271,7 @@ namespace MedievalWorldConquest.Tests
 
             world.AdvanceTo(world.Now + Buildings.BuildSeconds(BuildingType.Farm, 2, 1) + 1);
 
-            Assert.AreEqual(1, v.Level(BuildingType.Farm), "the cancelled farm never completes");
+            Assert.AreEqual(1, v.Level(BuildingType.Farm), "the canceled farm never completes");
         }
 
         [Test]

@@ -305,9 +305,26 @@ namespace MedievalWorldConquest
             nameRow.Add(ButtonWith("Rename", () => game.RenameVillage(name.value), "btn", "btn--small"));
             Root.Add(nameRow);
 
+            // The queue always takes the same room (a slot for each order it can hold), so starting a build
+            // doesn't push the list of buildings down.
             queueTitle = Text("", "heading");
             Root.Add(queueTitle);
             queueList = Element("queue-list");
+            for (int i = 0; i < World.MaxBuildQueue; i++)
+            {
+                var slot = Element("queue-slot");
+                var text = Element("queue-slot-text");
+                var line = Element("row-header");
+                line.Add(Text("", "row-title"));
+                line.Add(Text("", "row-level"));
+                text.Add(line);
+                var bar = Element("progress");
+                bar.Add(Element("progress-fill"));
+                text.Add(bar);
+                slot.Add(text);
+                slot.Add(ButtonWith("Cancel (full refund)", () => game.CancelLastBuild(), "btn", "btn--small", "cancel-btn", "queue-cancel"));
+                queueList.Add(slot);
+            }
             Root.Add(queueList);
 
             Root.Add(Text("Buildings", "heading"));
@@ -355,34 +372,27 @@ namespace MedievalWorldConquest
         void RefreshQueue(World world, Village v)
         {
             SetText(queueTitle, $"Construction ({v.Queue.Count}/{World.MaxBuildQueue})");
-            string signature = "";
-            foreach (var o in v.Queue) signature += o.Id + ",";
-            if ((string)queueList.userData != signature)
+            for (int i = 0; i < queueList.childCount; i++)
             {
-                queueList.userData = signature;
-                queueList.Clear();
-                if (v.Queue.Count == 0) queueList.Add(Text("Nothing being built. Choose an upgrade below.", "row-info"));
-                for (int i = 0; i < v.Queue.Count; i++)
+                var slot = queueList[i];
+                var title = (Label)slot[0][0][0];
+                var time = (Label)slot[0][0][1];
+                var bar = slot[0][1];
+                var fill = bar[0];
+                var cancel = slot[1];
+                bool used = i < v.Queue.Count;
+                slot.EnableInClassList("queue-slot--empty", !used);
+                // Hidden rather than removed, so every slot keeps its size.
+                bar.style.visibility = used ? Visibility.Visible : Visibility.Hidden;
+                cancel.style.visibility = used && i == v.Queue.Count - 1 ? Visibility.Visible : Visibility.Hidden;
+                if (!used)
                 {
-                    var order = v.Queue[i];
-                    var item = Element("queue-item", "recruit-item");
-                    var line = Element("row-header");
-                    line.Add(Text($"{Buildings.Get(order.Type).Name} → level {order.Level}", "row-title"));
-                    line.Add(Text("", "row-level"));
-                    item.Add(line);
-                    var bar = Element("progress");
-                    bar.Add(Element("progress-fill"));
-                    item.Add(bar);
-                    if (i == v.Queue.Count - 1) item.Add(ButtonWith("Cancel (full refund)", () => game.CancelLastBuild(), "btn", "btn--small", "cancel-btn"));
-                    queueList.Add(item);
+                    SetText(title, i == 0 ? "Nothing being built. Choose an upgrade below." : "Free slot");
+                    SetText(time, "");
+                    continue;
                 }
-            }
-
-            for (int i = 0; i < v.Queue.Count && i < queueList.childCount; i++)
-            {
                 var order = v.Queue[i];
-                var time = (Label)queueList[i][0][1];
-                var fill = queueList[i].Q<VisualElement>(className: "progress-fill");
+                SetText(title, $"{Buildings.Get(order.Type).Name} → level {order.Level}");
                 if (order.Started)
                 {
                     double left = Math.Max(0, order.FinishTime - world.Now);
@@ -506,7 +516,7 @@ namespace MedievalWorldConquest
             header.Add(names);
             row.Add(header);
             row.Add(Text(u.Description, "row-info"));
-            row.Add(Text($"Attack {u.Attack} · Defence {u.DefenseInfantry} / {u.DefenseCavalry} / {u.DefenseArcher} (inf / cav / arch) · Carries {u.Carry}", "row-info", "unit-stats"));
+            row.Add(Text($"Attack {u.Attack} · Defense {u.DefenseInfantry} / {u.DefenseCavalry} / {u.DefenseArcher} (inf / cav / arch) · Carries {u.Carry}", "row-info", "unit-stats"));
             var cost = Text("", "row-info");
             row.Add(cost);
 
@@ -729,7 +739,7 @@ namespace MedievalWorldConquest
                 defCav += (long)n * u.DefenseCavalry;
                 carry += (long)n * u.Carry;
             }
-            SetText(strength, $"Attack {attack:N0} · defence {defInf:N0} vs infantry, {defCav:N0} vs cavalry · carries {carry:N0} · troop population {v.TroopPopulation:N0} (free {v.FreePopulation:N0})");
+            SetText(strength, $"Attack {attack:N0} · defense {defInf:N0} vs infantry, {defCav:N0} vs cavalry · carries {carry:N0} · troop population {v.TroopPopulation:N0} (free {v.FreePopulation:N0})");
             RefreshMovements(world);
         }
 

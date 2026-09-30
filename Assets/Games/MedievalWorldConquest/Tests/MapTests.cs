@@ -74,7 +74,7 @@ namespace MedievalWorldConquest.Tests
     {
         static World NewWorld(int seed = 99) => World.CreateNew(new WorldSettings { Seed = seed, Speed = 1f, RivalDensity = 0 });
 
-        static double FromCentre(Village v) =>
+        static double FromCenter(Village v) =>
             Math.Sqrt((v.X - World.MapSize / 2.0) * (v.X - World.MapSize / 2.0) + (v.Y - World.MapSize / 2.0) * (v.Y - World.MapSize / 2.0));
 
         [Test]
@@ -83,7 +83,7 @@ namespace MedievalWorldConquest.Tests
             var world = NewWorld();
             Assert.AreEqual(World.MapSize / 2, world.PlayerVillage.X);
             Assert.Greater(world.Villages.Count(v => v.IsBarbarian), 5);
-            foreach (var v in world.Villages) Assert.LessOrEqual(FromCentre(v), World.StartRadius + 1);
+            foreach (var v in world.Villages) Assert.LessOrEqual(FromCenter(v), World.StartRadius + 1);
             Assert.AreEqual(World.StartRadius, world.SpawnRadius, 1e-9);
         }
 
@@ -98,7 +98,7 @@ namespace MedievalWorldConquest.Tests
             Assert.Greater(world.Villages.Count, before * 3, "the ring's growth brings new villages");
             // The newest villages are round the edge of the circle, give or take the spread.
             foreach (var v in world.Villages.Skip(world.Villages.Count - 10))
-                Assert.That(FromCentre(v), Is.InRange(world.SpawnRadius - World.RingSpread - 3, world.SpawnRadius + World.RingSpread + 1));
+                Assert.That(FromCenter(v), Is.InRange(world.SpawnRadius - World.RingSpread - 3, world.SpawnRadius + World.RingSpread + 1));
         }
 
         [Test]
@@ -114,7 +114,7 @@ namespace MedievalWorldConquest.Tests
                 Assert.AreNotEqual(TerrainType.Water, world.TerrainAt(v.X, v.Y), $"{v.Name} at {v.X}|{v.Y} is in a lake");
                 Assert.IsTrue(positions.Add((v.X, v.Y)), $"two villages at {v.X}|{v.Y}");
             }
-            // Neighbours are allowed now.
+            // Neighbors are allowed now.
             Assert.IsTrue(world.Villages.Any(a => world.Villages.Any(b => a != b && Math.Abs(a.X - b.X) <= 1 && Math.Abs(a.Y - b.Y) <= 1)));
         }
 
@@ -146,8 +146,8 @@ namespace MedievalWorldConquest.Tests
             var world = NewWorld();
             world.AdvanceTo(world.Now + 20 * World.SecondsPerDay);
             var barbs = world.Villages.Where(v => v.IsBarbarian).ToList();
-            double middle = barbs.Where(v => FromCentre(v) < World.StartRadius).Average(v => v.Points);
-            double frontier = barbs.Where(v => FromCentre(v) > world.SpawnRadius - 3).Average(v => v.Points);
+            double middle = barbs.Where(v => FromCenter(v) < World.StartRadius).Average(v => v.Points);
+            double frontier = barbs.Where(v => FromCenter(v) > world.SpawnRadius - 3).Average(v => v.Points);
             Assert.Greater(middle, frontier);
         }
 

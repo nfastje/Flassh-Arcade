@@ -96,6 +96,7 @@ namespace MedievalWorldConquest.Simulation
             }
             // Its old owner's market offers go with them (their goods were set aside, so nothing comes back).
             if (v.OwnerId != ownerId) Offers.RemoveAll(o => o.VillageId == v.Id);
+            RecountTribes();
             v.OwnerId = ownerId;
         }
 

@@ -16,7 +16,7 @@ namespace MedievalWorldConquest.Simulation
     /// </summary>
     public static class Terrain
     {
-        /// <summary>Fields this close to the map centre are always open grass, so the player never starts in a lake.</summary>
+        /// <summary>Fields this close to the map center are always open grass, so the player never starts in a lake.</summary>
         public const double StartClearingRadius = 4;
         /// <summary>The chance of any field being a pond.</summary>
         public const double PondChance = 0.005;

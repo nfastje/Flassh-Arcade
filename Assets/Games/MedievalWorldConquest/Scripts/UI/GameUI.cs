@@ -16,14 +16,14 @@ namespace MedievalWorldConquest
     {
         const string ResourcePath = "MedievalWorldConquest/";
 
+        /// <summary>The top bar's height in UI units (as in the style sheet's .top-bar).</summary>
+        public const float TopBarHeight = 84f;
+
         static readonly float[] Speeds = { 1f, 5f, 20f, 100f };
 
         /// <summary>What fills the screen below the top bar.</summary>
-        enum View { Village, Map, Reports, Ranking, Overview }
+        enum View { Village, Map, Reports, Ranking, Overview, Tribe, Messages }
 
-        /// <summary>Rival lord density choices: none, few, normal, many.</summary>
-        static readonly float[] RivalDensities = { 0f, 0.5f, 1f, 2f };
-        static readonly string[] RivalDensityNames = { "None", "Few", "Normal", "Many" };
 
         readonly MedievalWorldConquestGame game;
         readonly VisualElement root;
@@ -33,6 +33,12 @@ namespace MedievalWorldConquest
         ReportsPanel reportsPanel;
         RankingPanel rankingPanel;
         OverviewPanel overviewPanel;
+        TribePanel tribePanel;
+        MessagesPanel messagesPanel;
+        TribeWindow tribeWindow;
+        Label unreadMessages;
+        readonly List<Button> diplomacyButtons = new List<Button>();
+        bool chosenDiplomacy;
         SendDialog sendDialog;
         Label incomingWarning, unreadBadge;
         Button previousVillage, nextVillage;
@@ -44,18 +50,17 @@ namespace MedievalWorldConquest
         readonly VisualElement[] resourceChips = new VisualElement[3];
         Label storageValue, populationValue;
 
-        // Start screen
-        VisualElement startScreen, continueSection, newGameSection;
-        Label continueSummary, loadError;
+        // Start screen (the save slots) and the new-world screen
+        VisualElement startScreen, slotRow, newWorldScreen;
+        Label newWorldTitle;
+        int newWorldSlot;
         readonly List<Button> speedButtons = new List<Button>();
         readonly List<Button> modeButtons = new List<Button>();
-        readonly List<Button> rivalButtons = new List<Button>();
         readonly List<Button> skillButtons = new List<Button>();
         readonly List<Button> nobleButtons = new List<Button>();
         bool chosenCoins;
         float chosenSpeed = 5f;
         TimeMode chosenMode = TimeMode.RealTime;
-        float chosenDensity = 1f;
         TextField nameField;
         AiSkill chosenSkill = AiSkill.Normal;
 
@@ -145,41 +150,45 @@ namespace MedievalWorldConquest
 
         // ---------------------------------------------------------------- start screen
 
+        /// <summary>
+        /// The start screen lists the save slots side by side: each world's summary with Continue and Delete, or
+        /// New World for an empty slot. A new world's settings are on a screen of their own.
+        /// </summary>
         void BuildStartScreen()
         {
             startScreen = Element("screen", "centered", "dim");
             root.Add(startScreen);
-
             var panel = Element("panel");
             startScreen.Add(panel);
             panel.Add(Text("MEDIEVAL WORLD CONQUEST", "title"));
             panel.Add(Text("Build a village, raise an army and conquer the realm.", "subtitle"));
+            panel.Add(Text("Your worlds", "heading"));
+            slotRow = Element("slot-row");
+            panel.Add(slotRow);
+            var buttons = Element("option-row");
+            buttons.style.marginTop = 12;
+            buttons.Add(ButtonWith("Main Menu", () => game.LeaveToArcade(), "btn"));
+            panel.Add(buttons);
 
-            loadError = Text("", "error-text");
-            panel.Add(loadError);
+            BuildNewWorldScreen();
+        }
 
-            continueSection = Element();
-            continueSection.style.alignItems = Align.Center;
-            continueSummary = Text("", "body-text");
-            continueSection.Add(continueSummary);
-            continueSection.Add(ButtonWith("Continue", () => game.ContinueWorld(), "btn"));
-            continueSection.Add(Element("divider"));
-            panel.Add(continueSection);
+        void BuildNewWorldScreen()
+        {
+            newWorldScreen = Element("screen", "centered", "dim");
+            root.Add(newWorldScreen);
+            var panel = Element("panel", "new-world-panel");
+            newWorldScreen.Add(panel);
+            newWorldTitle = Text("New world", "title");
+            panel.Add(newWorldTitle);
 
-            newGameSection = Element();
-            newGameSection.style.alignItems = Align.Center;
-            newGameSection.Add(Text("New world", "heading"));
-
+            // One row per setting: its name on the left, the choices on the right.
             // What the player is called: shown on their villages and in the rankings.
-            var nameRow = Element("option-row", "name-row");
-            nameRow.Add(Text("Your name", "body-text", "option-label"));
             nameField = new TextField { maxLength = 24, value = World.DefaultPlayerName };
             nameField.AddToClassList("name-field");
-            nameRow.Add(nameField);
-            newGameSection.Add(nameRow);
+            panel.Add(SettingRow("Your name", nameField));
 
-            newGameSection.Add(Text("World speed", "body-text"));
-            var speedRow = Element("option-row");
+            var speedRow = Element("setting-options");
             foreach (float speed in Speeds)
             {
                 var b = ButtonWith(SpeedText(speed), () => ChooseSpeed(speed), "option");
@@ -187,73 +196,78 @@ namespace MedievalWorldConquest
                 speedButtons.Add(b);
                 speedRow.Add(b);
             }
-            newGameSection.Add(speedRow);
+            panel.Add(SettingRow("World speed", speedRow));
 
-            newGameSection.Add(Text("When the game is closed", "body-text"));
-            var modeRow = Element("option-row");
+            var modeRow = Element("setting-options");
             modeButtons.Add(ButtonWith("Real time\nThe world keeps going", () => ChooseMode(TimeMode.RealTime), "option", "option-wide"));
             modeButtons.Add(ButtonWith("Paused\nTime only passes while playing", () => ChooseMode(TimeMode.PausedWhenClosed), "option", "option-wide"));
             modeButtons[0].userData = TimeMode.RealTime;
             modeButtons[1].userData = TimeMode.PausedWhenClosed;
             foreach (var b in modeButtons) modeRow.Add(b);
-            newGameSection.Add(modeRow);
+            panel.Add(SettingRow("When closed", modeRow));
 
-            newGameSection.Add(Text("Rival lords: they keep arriving as the world grows", "body-text"));
-            var rivalRow = Element("option-row");
-            for (int i = 0; i < RivalDensities.Length; i++)
-            {
-                float density = RivalDensities[i];
-                var b = ButtonWith(RivalDensityNames[i], () => ChooseRivals(density), "option");
-                b.userData = density;
-                rivalButtons.Add(b);
-                rivalRow.Add(b);
-            }
-            // Their skill, in the same row to keep the panel short.
-            rivalRow.Add(Text("Skill", "body-text", "option-label"));
+            // How cleverly the rival lords play (how many there are is the world's own).
+            var skillRow = Element("setting-options");
             foreach (AiSkill skill in Enum.GetValues(typeof(AiSkill)))
             {
                 var b = ButtonWith(skill.ToString(), () => ChooseSkill(skill), "option");
                 b.userData = skill;
                 skillButtons.Add(b);
-                rivalRow.Add(b);
+                skillRow.Add(b);
             }
-            newGameSection.Add(rivalRow);
+            panel.Add(SettingRow("Rival skill", skillRow));
 
             // How noblemen are paid for: a flat price, or Tribal Wars' gold coins (dearer with every conquest).
-            newGameSection.Add(Text("Noblemen", "body-text"));
-            var nobleRow = Element("option-row");
+            var nobleRow = Element("setting-options");
             nobleButtons.Add(ButtonWith("Flat price\nEvery nobleman costs the same", () => ChooseCoins(false), "option", "option-wide"));
             nobleButtons.Add(ButtonWith("Gold coins\nEach conquest makes the next dearer", () => ChooseCoins(true), "option", "option-wide"));
             nobleButtons[0].userData = false;
             nobleButtons[1].userData = true;
             foreach (var b in nobleButtons) nobleRow.Add(b);
-            newGameSection.Add(nobleRow);
+            panel.Add(SettingRow("Noblemen", nobleRow));
+
+            // Every lord for themselves, or a simulated MMO with tribes, pacts and wars.
+            var diplomacyRow = Element("setting-options");
+            diplomacyButtons.Add(ButtonWith("Free-for-all\nEvery lord for themselves", () => ChooseDiplomacy(false), "option", "option-wide"));
+            diplomacyButtons.Add(ButtonWith("Tribes\nPacts, wars, and blocs that can win", () => ChooseDiplomacy(true), "option", "option-wide"));
+            diplomacyButtons[0].userData = false;
+            diplomacyButtons[1].userData = true;
+            foreach (var b in diplomacyButtons) diplomacyRow.Add(b);
+            panel.Add(SettingRow("Diplomacy", diplomacyRow));
 
             var buttons = Element("option-row");
-            buttons.style.marginTop = 12;
-            buttons.Add(ButtonWith("Start New World", OnStartNewWorld, "btn"));
-            buttons.Add(ButtonWith("Main Menu", () => game.LeaveToArcade(), "btn"));
-            newGameSection.Add(buttons);
-            panel.Add(newGameSection);
+            buttons.style.marginTop = 14;
+            buttons.Add(ButtonWith("Start World", OnStartNewWorld, "btn"));
+            buttons.Add(ButtonWith("Back", () => Show(newWorldScreen, false), "btn"));
+            panel.Add(buttons);
+            Show(newWorldScreen, false);
 
             ChooseSpeed(chosenSpeed);
             ChooseMode(chosenMode);
-            ChooseRivals(chosenDensity);
             ChooseSkill(chosenSkill);
             ChooseCoins(chosenCoins);
+            ChooseDiplomacy(chosenDiplomacy);
+        }
+
+        /// <summary>A setting on the new-world screen: its name on the left, its choices on the right.</summary>
+        static VisualElement SettingRow(string label, VisualElement choices)
+        {
+            var row = Element("setting-row");
+            row.Add(Text(label, "body-text", "setting-label"));
+            row.Add(choices);
+            return row;
+        }
+
+        void ChooseDiplomacy(bool on)
+        {
+            chosenDiplomacy = on;
+            foreach (var b in diplomacyButtons) b.EnableInClassList("option--selected", (bool)b.userData == on);
         }
 
         void ChooseCoins(bool coins)
         {
             chosenCoins = coins;
             foreach (var b in nobleButtons) b.EnableInClassList("option--selected", (bool)b.userData == coins);
-        }
-
-        void ChooseRivals(float density)
-        {
-            chosenDensity = density;
-            foreach (var b in rivalButtons) b.EnableInClassList("option--selected", (float)b.userData == density);
-            foreach (var b in skillButtons) b.SetEnabled(density > 0);
         }
 
         void ChooseSkill(AiSkill skill)
@@ -274,6 +288,14 @@ namespace MedievalWorldConquest
             foreach (var b in modeButtons) b.EnableInClassList("option--selected", (TimeMode)b.userData == mode);
         }
 
+        /// <summary>Opens the new-world screen for an empty slot.</summary>
+        void OpenNewWorld(int saveSlot)
+        {
+            newWorldSlot = saveSlot;
+            SetText(newWorldTitle, $"New world  ·  slot {saveSlot + 1}");
+            Show(newWorldScreen, true);
+        }
+
         void OnStartNewWorld()
         {
             var settings = new WorldSettings
@@ -281,39 +303,63 @@ namespace MedievalWorldConquest
                 Speed = chosenSpeed,
                 TimeMode = chosenMode,
                 Seed = Environment.TickCount,
-                RivalDensity = chosenDensity,
                 RivalSkill = chosenSkill,
                 PlayerName = nameField.value,
                 GoldCoins = chosenCoins,
+                Diplomacy = chosenDiplomacy,
             };
-            if (game.HasSave)
-                AskToConfirm("Starting a new world will replace your saved one. Continue?", () => game.StartNewWorld(settings));
-            else
-                game.StartNewWorld(settings);
+            Show(newWorldScreen, false);
+            game.StartNewWorld(settings, newWorldSlot);
         }
 
-        /// <param name="saved">The saved world to offer to continue, or null if there isn't one.</param>
-        /// <param name="error">Why a save couldn't be loaded, if one exists but is unreadable.</param>
-        public void ShowStart(World saved, string error)
+        /// <param name="summaries">Each save slot's world (null: empty).</param>
+        /// <param name="errors">For each slot: why its save couldn't be read, if it couldn't.</param>
+        public void ShowStart(SaveSummary[] summaries, string[] errors)
         {
             Show(startScreen, true);
+            Show(newWorldScreen, false);
             Show(hud, false);
             Show(menu, false);
 
-            Show(continueSection, saved != null);
-            if (saved != null)
+            slotRow.Clear();
+            for (int i = 0; i < summaries.Length; i++)
             {
-                var v = saved.PlayerVillage;
-                int lords = saved.Players.FindAll(p => !p.IsHuman).Count;
-                continueSummary.text = $"{v?.Name ?? "Your village"}  ·  {World.FormatClock(saved.Now)}\n" +
-                                       $"{SpeedText(saved.Settings.Speed)} speed  ·  {ModeText(saved.Settings.TimeMode)}  ·  " +
-                                       (saved.Settings.RivalDensity <= 0 && lords == 0 ? "no rivals" : $"{lords} rival lords so far ({saved.Settings.RivalSkill})") +
-                                       (saved.Settings.GoldCoins ? "  ·  gold coins" : "");
-            }
-            loadError.text = error ?? "";
-            Show(loadError, !string.IsNullOrEmpty(error));
-        }
+                int index = i;
+                var s = summaries[i];
+                var card = Element("slot-card");
+                card.Add(Text($"World {i + 1}", "row-title", "slot-title"));
+                var body = Element("slot-body");
+                if (s != null)
+                {
+                    string state = s.Won ? "  ·  won" : s.Lost ? "  ·  the world has ended" : "";
+                    body.Add(Text($"{s.PlayerName}  ·  {s.VillageName}", "slot-line", "slot-line--strong"));
+                    body.Add(Text($"Day {s.Day}{state}", "slot-line"));
+                    body.Add(Text($"{s.Villages:N0} {(s.Villages == 1 ? "village" : "villages")}  ·  {s.Points:N0} points" +
+                                  (s.Rank > 0 ? $"  ·  rank {s.Rank:N0} of {s.Lords:N0}" : ""), "slot-line"));
+                    body.Add(Text($"{SpeedText(s.Speed)}  ·  {ModeText(s.TimeMode)}  ·  {s.Skill} rivals", "slot-line"));
+                    body.Add(Text($"{(s.GoldCoins ? "Gold coins" : "Flat-price noblemen")}  ·  {(s.Diplomacy ? "Tribes" : "Free-for-all")}", "slot-line"));
+                    body.Add(Text($"Saved {new DateTime(s.SavedAtUtcTicks, DateTimeKind.Utc).ToLocalTime():g}", "slot-line", "slot-line--faint"));
+                }
+                else if (!string.IsNullOrEmpty(errors[i]))
+                    body.Add(Text($"This world couldn't be read. ({errors[i]})", "slot-line", "error-text"));
+                else
+                    body.Add(Text("Empty", "slot-line", "slot-line--faint"));
+                card.Add(body);
 
+                var actions = Element("slot-actions");
+                if (s != null)
+                {
+                    actions.Add(ButtonWith("Continue", () => game.ContinueWorld(index), "btn", "btn--small"));
+                    actions.Add(ButtonWith("Delete", () => AskToConfirm($"Delete world {index + 1} for good? This can't be undone.", () => game.DeleteWorld(index)), "btn", "btn--small", "slot-delete"));
+                }
+                else if (!string.IsNullOrEmpty(errors[i]))
+                    actions.Add(ButtonWith("Delete", () => AskToConfirm($"Delete the unreadable world {index + 1}?", () => game.DeleteWorld(index)), "btn", "btn--small", "slot-delete"));
+                else
+                    actions.Add(ButtonWith("New World", () => OpenNewWorld(index), "btn", "btn--small"));
+                card.Add(actions);
+                slotRow.Add(card);
+            }
+        }
         // ---------------------------------------------------------------- HUD
 
         void BuildHud()
@@ -322,31 +368,51 @@ namespace MedievalWorldConquest
             hud.pickingMode = PickingMode.Ignore;
             root.Add(hud);
 
-            // The top bar, as in Tribal Wars: the player and village names (the player's leads to their profile,
-            // the village's back to the village), the map, the resources, then reports and ranking, the clock and
-            // the menu. Everything but the names keeps its size; long names are cut short.
+            // The top bar, in two rows as in Tribal Wars. Above, the menu: the tabs (each with its name), then the
+            // player's name (to their profile), the clock (the world's speed in its tooltip) and the menu button.
+            // Below, the village: its name (back to the village) between the arrows to the player's other villages,
+            // where it is and what it's worth, then its resources, storage and population.
             var top = Element("top-bar");
-            previousVillage = ButtonWith("<", () => game.CycleVillage(-1), "btn", "btn--small", "village-arrow");
-            top.Add(previousVillage);
-            var title = Element("top-title");
+            var nav = Element("top-row", "top-row--nav");
+            viewButtons[View.Village] = IconButton(nav, Icons.Village, "Village", () => ShowView(View.Village));
+            viewButtons[View.Map] = IconButton(nav, Icons.Map, "Map", () => ShowView(currentView == View.Map ? View.Village : View.Map));
+            viewButtons[View.Overview] = IconButton(nav, Icons.Villages, "Villages", () => ShowView(currentView == View.Overview ? View.Village : View.Overview));
+            viewButtons[View.Overview].tooltip = "All your villages at a glance";
+            // Reports: a scroll with a little red count of the unread ones.
+            viewButtons[View.Reports] = IconButton(nav, Icons.Reports, "Reports", () => ShowView(currentView == View.Reports ? View.Village : View.Reports));
+            unreadBadge = Text("", "unread-badge");
+            unreadBadge.pickingMode = PickingMode.Ignore;
+            viewButtons[View.Reports].Add(unreadBadge);
+            viewButtons[View.Ranking] = IconButton(nav, Icons.Ranking, "Ranking", () => ShowView(currentView == View.Ranking ? View.Village : View.Ranking));
+            // Tribes and messages, on diplomacy worlds only.
+            viewButtons[View.Tribe] = IconButton(nav, Icons.Tribe, "Tribe", () => ShowView(currentView == View.Tribe ? View.Village : View.Tribe));
+            viewButtons[View.Messages] = IconButton(nav, Icons.Messages, "Messages", () => ShowView(currentView == View.Messages ? View.Village : View.Messages));
+            unreadMessages = Text("", "unread-badge");
+            unreadMessages.pickingMode = PickingMode.Ignore;
+            viewButtons[View.Messages].Add(unreadMessages);
+            nav.Add(Element("spacer"));
             playerName = ButtonWith("", () => { var human = lastWorld?.HumanPlayer; if (human != null) OpenPlayerInfo(human.Id); }, "top-link", "top-player");
             playerName.tooltip = "Your profile";
-            var line = Element("top-village-line");
+            nav.Add(playerName);
+            clock = Text("", "clock");
+            speedTag = Text("", "speed-tag");
+            nav.Add(clock);
+            nav.Add(ButtonWith("Menu", ToggleMenu, "btn", "btn--small"));
+            top.Add(nav);
+
+            var here = Element("top-row", "top-row--village");
+            previousVillage = ButtonWith("<", () => game.CycleVillage(-1), "btn", "btn--small", "village-arrow");
+            here.Add(previousVillage);
             villageName = ButtonWith("", () => ShowView(View.Village), "top-link", "village-name");
             villageName.tooltip = "Back to the village";
-            villageInfo = Text("", "top-info");
-            line.Add(villageName);
-            line.Add(villageInfo);
-            title.Add(playerName);
-            title.Add(line);
-            top.Add(title);
+            here.Add(villageName);
             nextVillage = ButtonWith(">", () => game.CycleVillage(1), "btn", "btn--small", "village-arrow");
-            top.Add(nextVillage);
-            viewButtons[View.Map] = IconButton(top, Icons.Map, "Map", () => ShowView(currentView == View.Map ? View.Village : View.Map));
-            viewButtons[View.Overview] = IconButton(top, null, "Villages", () => ShowView(currentView == View.Overview ? View.Village : View.Overview));
-            viewButtons[View.Overview].tooltip = "All your villages at a glance";
-
-            top.Add(Element("spacer"));
+            here.Add(nextVillage);
+            villageInfo = Text("", "top-info");
+            here.Add(villageInfo);
+            here.Add(Element("spacer"));
+            incomingWarning = Text("", "incoming-warning");
+            here.Add(incomingWarning);
             for (int i = 0; i < 3; i++)
             {
                 // Production per hour is in the tooltip (and the village pane), as in Tribal Wars, to keep the bar short.
@@ -355,38 +421,21 @@ namespace MedievalWorldConquest
                 resourceValues[i] = Text("", "resource-value");
                 chip.Add(resourceValues[i]);
                 resourceChips[i] = chip;
-                top.Add(chip);
+                here.Add(chip);
             }
             var storage = Element("resource");
             storage.tooltip = "Warehouse capacity";
             storage.Add(Icons.Element(Icons.Storage, 20, "resource-icon"));
             storageValue = Text("", "resource-value");
             storage.Add(storageValue);
-            top.Add(storage);
+            here.Add(storage);
             var population = Element("resource");
             population.tooltip = "Population (used / farm limit)";
             population.Add(Icons.Element(Icons.Population, 20, "resource-icon"));
             populationValue = Text("", "resource-value");
             population.Add(populationValue);
-            top.Add(population);
-            incomingWarning = Text("", "incoming-warning");
-            top.Add(incomingWarning);
-            top.Add(Element("spacer"));
-
-            // Reports: a scroll with a little red count of the unread ones.
-            viewButtons[View.Reports] = IconButton(top, Icons.Reports, "", () => ShowView(currentView == View.Reports ? View.Village : View.Reports));
-            viewButtons[View.Reports].tooltip = "Reports";
-            unreadBadge = Text("", "unread-badge");
-            unreadBadge.pickingMode = PickingMode.Ignore;
-            viewButtons[View.Reports].Add(unreadBadge);
-            viewButtons[View.Ranking] = IconButton(top, Icons.Ranking, "", () => ShowView(currentView == View.Ranking ? View.Village : View.Ranking));
-            viewButtons[View.Ranking].tooltip = "Ranking";
-
-            clock = Text("", "clock");
-            speedTag = Text("", "speed-tag");
-            top.Add(clock);
-            top.Add(speedTag);
-            top.Add(ButtonWith("Menu", ToggleMenu, "btn", "btn--small"));
+            here.Add(population);
+            top.Add(here);
             hud.Add(top);
 
             // Where player and village names lead when clicked.
@@ -406,6 +455,10 @@ namespace MedievalWorldConquest
                 },
                 SendTroops = id => sendDialog.Open(id),
                 SwitchTo = id => game.SelectVillage(id),
+                OpenTribe = OpenTribeInfo,
+                InviteToTribe = id => game.InviteToTribe(id),
+                ExpelFromTribe = id => AskToConfirm("Expel this lord from your tribe?", () => game.ExpelFromTribe(id)),
+                SetTribeTarget = id => game.SetTribeTarget(id),
                 ShowInRanking = id =>
                 {
                     CloseInfo();
@@ -436,6 +489,10 @@ namespace MedievalWorldConquest
                 ShowView(View.Village);
             });
             hud.Add(overviewPanel.Root);
+            tribePanel = new TribePanel(game, links, AskToConfirm);
+            hud.Add(tribePanel.Root);
+            messagesPanel = new MessagesPanel(game, links);
+            hud.Add(messagesPanel.Root);
 
             // Troop movements (attacks coming in, and the player's own going out and coming home), along the bottom
             // of the village view.
@@ -455,6 +512,8 @@ namespace MedievalWorldConquest
             hud.Add(villageWindow.Root);
             playerWindow = new PlayerWindow(links);
             hud.Add(playerWindow.Root);
+            tribeWindow = new TribeWindow(game, links);
+            hud.Add(tribeWindow.Root);
             ShowView(View.Village);
         }
 
@@ -466,6 +525,7 @@ namespace MedievalWorldConquest
         public void OpenVillageInfo(int villageId)
         {
             playerWindow.Close();
+            tribeWindow.Close();
             villageWindow.Open(villageId);
         }
 
@@ -473,17 +533,27 @@ namespace MedievalWorldConquest
         public void OpenPlayerInfo(int playerId)
         {
             villageWindow.Close();
+            tribeWindow.Close();
             playerWindow.Open(playerId);
         }
 
-        /// <summary>Whether the village or player window is showing.</summary>
-        public bool InfoOpen => villageWindow.IsOpen || playerWindow.IsOpen;
+        /// <summary>Opens a tribe's window (from its tag anywhere).</summary>
+        public void OpenTribeInfo(int tribeId)
+        {
+            villageWindow.Close();
+            playerWindow.Close();
+            tribeWindow.Open(tribeId);
+        }
 
-        /// <summary>Closes the village and player windows.</summary>
+        /// <summary>Whether the village, player or tribe window is showing.</summary>
+        public bool InfoOpen => villageWindow.IsOpen || playerWindow.IsOpen || tribeWindow.IsOpen;
+
+        /// <summary>Closes the village, player and tribe windows.</summary>
         public void CloseInfo()
         {
             villageWindow.Close();
             playerWindow.Close();
+            tribeWindow.Close();
         }
 
         /// <summary>A top-bar button with an icon (and optional label).</summary>
@@ -515,6 +585,8 @@ namespace MedievalWorldConquest
             Show(reportsPanel.Root, view == View.Reports);
             Show(rankingPanel.Root, view == View.Ranking);
             Show(overviewPanel.Root, view == View.Overview);
+            Show(tribePanel.Root, view == View.Tribe);
+            Show(messagesPanel.Root, view == View.Messages);
             if (view != View.Village) buildingWindow.Close();
         }
 
@@ -545,12 +617,14 @@ namespace MedievalWorldConquest
             SetText(playerName, world.HumanPlayer?.Name ?? "");
             SetText(villageName, v.Name);
             SetText(villageInfo, v.Loyalty < World.MaxLoyalty
-                ? $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)} · loyalty {Math.Floor(v.Loyalty):0}"
-                : $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}");
-            villageInfo.tooltip = own.Count > 1 ? $"{v.Points:N0} points · village {index + 1} of {own.Count}" : $"{v.Points:N0} points";
+                ? $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)} · {v.Points:N0} points · loyalty {Math.Floor(v.Loyalty):0}"
+                : $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)} · {v.Points:N0} points");
+            villageInfo.tooltip = own.Count > 1 ? $"Village {index + 1} of {own.Count}" : "Your village";
             Show(previousVillage, own.Count > 1);
             Show(nextVillage, own.Count > 1);
+            // The world's speed is in the clock's tooltip, to leave the bar's room for the names.
             SetText(clock, World.FormatClock(world.Now));
+            clock.tooltip = $"World speed {SpeedText(world.Settings.Speed)}";
             SetText(speedTag, SpeedText(world.Settings.Speed));
 
             int capacity = v.StorageCapacity;
@@ -581,6 +655,12 @@ namespace MedievalWorldConquest
             if (moving.Count > 0 && VillageTabActive) RefreshMovements(world, moving, incoming.Count);
             villageWindow.Refresh(world);
             playerWindow.Refresh(world);
+            tribeWindow.Refresh(world);
+            Show(viewButtons[View.Tribe], world.Diplomacy);
+            Show(viewButtons[View.Messages], world.Diplomacy);
+            int unreadMail = world.UnreadMessages;
+            Show(unreadMessages, unreadMail > 0);
+            SetText(unreadMessages, unreadMail > 99 ? "99+" : unreadMail.ToString());
 
             if (VillageTabActive)
             {
@@ -591,6 +671,8 @@ namespace MedievalWorldConquest
             else if (currentView == View.Reports) reportsPanel.Refresh(world);
             else if (currentView == View.Ranking) rankingPanel.Refresh(world);
             else if (currentView == View.Overview) overviewPanel.Refresh(world);
+            else if (currentView == View.Tribe) tribePanel.Refresh(world);
+            else if (currentView == View.Messages) messagesPanel.Refresh(world);
             sendDialog.Refresh(world);
         }
 
@@ -696,6 +778,8 @@ namespace MedievalWorldConquest
 
         VisualElement endScreen;
         Label endTitle, endText;
+        /// <summary>The standings shown when a world ends: the winning tribes and the top ten lords.</summary>
+        ScrollView endStandings;
         Button endFirst, endSecond;
         Action endFirstAction, endSecondAction;
 
@@ -707,6 +791,9 @@ namespace MedievalWorldConquest
             endText = Text("", "body-text");
             panel.Add(endTitle);
             panel.Add(endText);
+            endStandings = new ScrollView(ScrollViewMode.Vertical);
+            endStandings.AddToClassList("end-standings");
+            panel.Add(endStandings);
             var row = Element("option-row");
             row.style.marginTop = 14;
             endFirst = ButtonWith("", () => { Show(endScreen, false); endFirstAction?.Invoke(); }, "btn");
@@ -723,6 +810,8 @@ namespace MedievalWorldConquest
         {
             endTitle.text = title;
             endText.text = text;
+            endStandings.Clear();
+            Show(endStandings, false);
             endFirst.text = first;
             endSecond.text = second;
             endFirstAction = onFirst;
@@ -730,11 +819,82 @@ namespace MedievalWorldConquest
             Show(endScreen, true);
         }
 
-        /// <summary>The player reached the conquest goal.</summary>
-        public void ShowVictory(World world) => ShowEndScreen("VICTORY",
-            $"You rule {world.HumanVillages().Count:N0} of the {world.LordVillageCount:N0} villages held by lords ({world.HumanShare:P0}), " +
-            $"past the {world.Settings.ConquestGoal:P0} you needed. The realm is yours!\nYou can keep playing this world as long as you like.",
-            "Keep Playing", null, "Main Menu", () => game.LeaveToArcade());
+        /// <summary>The player reached the conquest goal: alone, or with their tribe and its allies.</summary>
+        public void ShowVictory(World world)
+        {
+            var tribe = world.TribeOf(world.HumanPlayer);
+            bool alone = world.HumanShare >= world.Settings.ConquestGoal || tribe == null;
+            ShowEndScreen("VICTORY", alone
+                ? $"You rule {world.HumanVillages().Count:N0} of the {world.GoalVillageCount:N0} {world.GoalVillagesLabel} ({world.HumanShare:P0}), " +
+                  $"past the {world.Settings.ConquestGoal:P0} you needed. The realm is yours!\nYou can keep playing this world as long as you like."
+                : $"{tribe.Name} [{tribe.Tag}] and its allies hold {world.BlocShare(tribe):P0} of the {world.GoalVillagesLabel}, past the {world.Settings.ConquestGoal:P0} " +
+                  "needed. The realm is yours, and your allies', together!\nYou can keep playing this world as long as you like.",
+                "Keep Playing", null, "Main Menu", () => game.LeaveToArcade());
+            ShowStandings(world, alone ? null : tribe);
+        }
+
+        /// <summary>Under the end screen's words: the winning tribes (if a tribe won) and the top ten lords of the ranking.</summary>
+        void ShowStandings(World world, Tribe winner)
+        {
+            endStandings.Clear();
+            if (winner != null)
+            {
+                endStandings.Add(Text("The winning tribes", "row-title", "stats-heading"));
+                var header = Element("ranking-row", "ranking-header");
+                header.Add(Text("", "ranking-rank"));
+                header.Add(Text("Tribe", "ranking-name"));
+                header.Add(Text("Villages", "ranking-number"));
+                header.Add(Text("Points", "ranking-number"));
+                endStandings.Add(header);
+                var bloc = new List<Tribe>();
+                foreach (int id in world.BlocOf(winner))
+                    if (world.FindTribe(id) is Tribe t) bloc.Add(t);
+                bloc.Sort((a, b) => world.TribeStrength(b).villages.CompareTo(world.TribeStrength(a).villages));
+                foreach (var t in bloc)
+                {
+                    var (points, villages) = world.TribeStrength(t);
+                    var row = Element("ranking-row");
+                    row.EnableInClassList("ranking-row--you", world.HumanPlayer?.TribeId == t.Id);
+                    row.Add(Text("", "ranking-rank"));
+                    row.Add(Text($"[{t.Tag}] {t.Name}  ·  {t.Members.Count} members", "ranking-name"));
+                    row.Add(Text($"{villages:N0}", "ranking-number"));
+                    row.Add(Text($"{points:N0}", "ranking-number"));
+                    endStandings.Add(row);
+                }
+            }
+            endStandings.Add(Text("The top ten lords", "row-title", "stats-heading"));
+            var top = Element("ranking-row", "ranking-header");
+            top.Add(Text("#", "ranking-rank"));
+            top.Add(Text("Lord", "ranking-name"));
+            top.Add(Text("Villages", "ranking-number"));
+            top.Add(Text("Points", "ranking-number"));
+            endStandings.Add(top);
+            var rankings = world.Rankings();
+            for (int i = 0; i < rankings.Count && i < 10; i++)
+            {
+                var r = rankings[i];
+                var row = Element("ranking-row");
+                row.EnableInClassList("ranking-row--you", r.Player.IsHuman);
+                row.Add(Text($"{i + 1}", "ranking-rank"));
+                row.Add(Text(world.NameWithTag(r.Player) + (r.Player.IsHuman ? " (you)" : ""), "ranking-name"));
+                row.Add(Text($"{r.Villages:N0}", "ranking-number"));
+                row.Add(Text($"{r.Points:N0}", "ranking-number"));
+                endStandings.Add(row);
+            }
+            Show(endStandings, true);
+        }
+
+        /// <summary>
+        /// On a diplomacy world, a side without the player took the world first (a satellite of the winning faction
+        /// included): the world has ended, and the end screen shows the winning tribes and the top ten lords.
+        /// </summary>
+        public void ShowBlocVictory(World world)
+        {
+            var winner = world.FindTribe(world.WinningTribeId);
+            ShowEndScreen("THE WORLD HAS ENDED", $"A side held {world.Settings.ConquestGoal:P0} of the {world.GoalVillagesLabel} for {World.HoldDays:0} days. Here are the winning tribes.\n" +
+                "You can keep playing this world as long as you like.", "Keep Playing", null, "Main Menu", () => game.LeaveToArcade());
+            ShowStandings(world, winner);
+        }
 
         /// <summary>The player lost their last village.</summary>
         public void ShowDefeat(World world) => ShowEndScreen("DEFEATED",
