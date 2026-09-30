@@ -435,6 +435,9 @@ namespace MedievalWorldConquest
         /// <summary>Opens a building's own screen in the village view.</summary>
         public void OpenBuilding(BuildingType type) => ui.OpenBuilding(type);
 
+        /// <summary>Opens the Recruit screen: every unit the village's training buildings train.</summary>
+        public void OpenRecruit() => ui.OpenRecruit();
+
         /// <summary>Renames the current village (from the Headquarters).</summary>
         public void RenameVillage(string name)
         {

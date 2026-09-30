@@ -152,8 +152,8 @@ namespace MedievalWorldConquest.Tests
         {
             var world = ConquestWorld(out var home, out var target, rivals: 1);
             foreach (var b in world.Villages.Where(v => v.IsBarbarian)) b.Troops = new int[Units.Count];
-            // The goal counts only lords' villages (barbarians' don't): holding two of them will do here.
-            world.Settings.ConquestGoal = 1.5f / (world.LordVillageCount + 1);
+            // The goal counts every village in the realm: holding two of them will do here.
+            world.Settings.ConquestGoal = 1.5f / world.GoalVillageCount;
             Assert.Less(world.HumanShare, world.Settings.ConquestGoal);
             Assert.IsFalse(world.Won);
             target.Loyalty = 15;

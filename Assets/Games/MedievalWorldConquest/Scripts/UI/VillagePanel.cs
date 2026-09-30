@@ -71,7 +71,7 @@ namespace MedievalWorldConquest
             unitList = Element();
             unitsBox.Add(unitList);
             var links = Element("pane-links");
-            links.Add(ButtonWith("» recruit", () => game.OpenBuilding(BuildingType.Barracks), "pane-link"));
+            links.Add(ButtonWith("» recruit", () => game.OpenRecruit(), "pane-link"));
             links.Add(ButtonWith("» rally point", () => game.OpenBuilding(BuildingType.RallyPoint), "pane-link"));
             unitsBox.Add(links);
 

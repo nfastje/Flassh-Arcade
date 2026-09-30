@@ -15,6 +15,19 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
+        public void AnAttacksSpeedIsItsSlowestUnit()
+        {
+            Assert.AreEqual(AttackSpeed.Scout, AttackSpeeds.Of(Army((UnitType.Scout, 5))));
+            Assert.AreEqual(AttackSpeed.Cavalry, AttackSpeeds.Of(Army((UnitType.Scout, 5), (UnitType.LightCavalry, 50))));
+            Assert.AreEqual(AttackSpeed.Infantry, AttackSpeeds.Of(Army((UnitType.Axeman, 100), (UnitType.LightCavalry, 50))));
+            Assert.AreEqual(AttackSpeed.Siege, AttackSpeeds.Of(Army((UnitType.Axeman, 100), (UnitType.Ram, 1))), "one ram slows the lot: a fake looks real");
+            Assert.AreEqual(AttackSpeed.Nobleman, AttackSpeeds.Of(Army((UnitType.Ram, 10), (UnitType.Nobleman, 1))));
+            Assert.IsTrue(AttackSpeeds.IsDangerous(AttackSpeed.Siege) && AttackSpeeds.IsDangerous(AttackSpeed.Nobleman));
+            Assert.IsFalse(AttackSpeeds.WorthHelp(AttackSpeed.Cavalry));
+            Assert.AreEqual(UnitType.Ram, AttackSpeeds.Icon(AttackSpeed.Siege));
+        }
+
+        [Test]
         public void TheRealmSplitsAlongItsFriendships()
         {
             var world = World.CreateNew(new WorldSettings { Seed = 1234, Speed = 1f, RivalDensity = 1, Diplomacy = true, ProtectionDays = 0 });

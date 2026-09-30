@@ -19,8 +19,14 @@ namespace MedievalWorldConquest.Simulation
         public float Speed = 5f;
         public TimeMode TimeMode = TimeMode.RealTime;
         public int Seed;
-        /// <summary>Fraction of all villages the player must own to win.</summary>
-        public float ConquestGoal = 0.6f;
+        /// <summary>
+        /// Share of every village in the realm (barbarians' included) to hold to win: half, on every world for now
+        /// (on a world with tribes, for <see cref="World.HoldDays"/> days).
+        /// </summary>
+        public float ConquestGoal = StandardGoal;
+
+        /// <summary>The goal every new world gets: half the realm.</summary>
+        public const float StandardGoal = 0.5f;
         /// <summary>
         /// How thickly rival lords (computer players) settle as the world grows: 0 for none, 1 normal, 2 twice as
         /// many. There's no fixed number: new ones keep arriving as the world widens.

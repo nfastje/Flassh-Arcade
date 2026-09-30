@@ -236,8 +236,9 @@ namespace MedievalWorldConquest
             }
 
             int own = world.HumanVillages().Count;
-            string goal = $"You hold {own:N0} of the {world.GoalVillageCount:N0} {world.GoalVillagesLabel} ({world.HumanShare:P1}); " +
-                          $"win by holding {world.Settings.ConquestGoal:P0} of them (barbarian villages don't count).";
+            string goal = $"You hold {own:N0} of the {world.GoalVillageCount:N0} {world.GoalVillagesLabel} ({world.HumanShare:P1}). " +
+                          $"Win by holding {world.Settings.ConquestGoal:P0} of them (barbarian villages {(World.GoalOverAllVillages ? "included" : "don't count")})" +
+                          (world.Diplomacy ? $" for {World.HoldDays:0} days, with your tribe and up to two allies or alone." : ".");
             SetText(summary, rankings.Count <= 1
                 ? $"There are no rival lords in this world yet. {goal}"
                 : $"You are ranked {you + 1:N0} of {rankings.Count:N0}. {goal}");

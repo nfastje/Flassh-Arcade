@@ -121,6 +121,16 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>How much stronger than the expected defense a lord wants its attack to be (at the worst luck).</summary>
         double SkillAttackMargin => Settings.RivalSkill == AiSkill.Easy ? 1.6 : Settings.RivalSkill == AiSkill.Hard ? 1.15 : 1.3;
         int SkillMaxRaids => Settings.RivalSkill == AiSkill.Easy ? 1 : Settings.RivalSkill == AiSkill.Hard ? 5 : 3;
+        /// <summary>The chance a warlike lord's real ram or noble attack on a player comes with fakes (none on Easy).</summary>
+        double SkillFakeChance => FakeRate * (Settings.RivalSkill == AiSkill.Easy ? 0 : Settings.RivalSkill == AiSkill.Hard ? 0.6 : 0.35);
+
+        /// <summary>
+        /// How much lords fake (a scale on the skill's rate; 0: never). Half: at the full rate, fakes cost real
+        /// attacks their rams and pulled support about enough to stall one world in five (simulated).
+        /// </summary>
+        public static double FakeRate = 0.5;
+        /// <summary>Game days a warlike lord waits between fakes sent on their own.</summary>
+        double SkillFakeGapDays => Settings.RivalSkill == AiSkill.Hard ? 1.5 : 3;
 
         // ---------------------------------------------------------------- turns
 
@@ -802,6 +812,7 @@ namespace MedievalWorldConquest.Simulation
         void AiAttack(Player lord, Village v, AiStyle style)
         {
             // A tribe's named target draws its members in, whatever their mood; otherwise war is a matter of temperament.
+            AiLoneFake(lord, v);
             var tribe = Diplomacy ? TribeOf(lord) : null;
             var target = tribe != null && tribe.TargetUntil > Now ? FindVillage(tribe.TargetVillageId) : null;
             bool tribeOp = target != null && Distance(v, target) <= AiAttackRange && AiRandom(lord, 13) < 0.5;
@@ -873,6 +884,73 @@ namespace MedievalWorldConquest.Simulation
             var command = Send(v, best, offense, CommandKind.Attack, aim);
             // Give the village time to recover before the next attack, so the lord doesn't hammer it non-stop.
             if (command != null) NoteFor(lord, best.Id, true).NextRaidAt = Now + 2 * (command.ArriveTime - Now) + 6 * 3600;
+            // A ram attack is worth hiding among fakes.
+            if (command != null && AttackSpeeds.IsDangerous(AttackSpeeds.Of(command.Troops))) MaybeFakes(lord, best);
+        }
+
+        // ---------------------------------------------------------------- fakes
+
+        /// <summary>
+        /// Warlike lords hide a real ram or noble attack on a player among fakes, as Tribal Wars players did: 1 to 3
+        /// single rams (or catapults), from any of their villages that has one, at other villages of the same player
+        /// or their tribe nearby. Defenders see only the speed, so each looks as dangerous as the real one.
+        /// </summary>
+        void MaybeFakes(Player lord, Village real)
+        {
+            if (!Warlike(lord) || real.IsBarbarian || AiRandom(lord, 17) >= SkillFakeChance) return;
+            int count = 1 + (int)(AiRandom(lord, 18) * 3);
+            var victims = new HashSet<int> { real.OwnerId };
+            var theirTribe = Diplomacy ? TribeOf(real.OwnerId) : null;
+            if (theirTribe != null) victims.UnionWith(theirTribe.Members);
+            foreach (var t in VillagesNear(real.X, real.Y, 15))
+            {
+                if (count == 0) break;
+                if (t == real || t.IsBarbarian || !victims.Contains(t.OwnerId) || IsProtected(t.OwnerId) || AreFriendly(lord.Id, t.OwnerId)) continue;
+                if (SendFake(lord, t)) count--;
+            }
+        }
+
+        /// <summary>
+        /// Now and then, a warlike lord sends a fake on its own at an enemy (on a world with tribes: one its tribe is
+        /// at war with, or the tribe's target; without tribes: a player it's already attacking).
+        /// </summary>
+        void AiLoneFake(Player lord, Village v)
+        {
+            if (!Warlike(lord) || SkillFakeChance <= 0 || (lord.LastFakeAt >= 0 && Now - lord.LastFakeAt < SkillFakeGapDays * SecondsPerDay)) return;
+            if (AiRandom(lord, 19) >= 0.1 * FakeRate) return;
+            var attacking = new HashSet<int>();
+            if (!Diplomacy)
+                foreach (var c in CommandsOf(lord.Id))
+                    if (c.Kind == CommandKind.Attack && FindVillage(c.ToVillageId) is Village to && !to.IsBarbarian) attacking.Add(to.OwnerId);
+            foreach (var t in VillagesNear(v.X, v.Y, AiAttackRange))
+            {
+                if (t.IsBarbarian || t.OwnerId == lord.Id || IsProtected(t.OwnerId) || AreFriendly(lord.Id, t.OwnerId)) continue;
+                bool enemy = Diplomacy ? AtWar(lord.Id, t.OwnerId) || IsTribeTarget(lord, t) : attacking.Contains(t.OwnerId);
+                if (!enemy || !SendFake(lord, t)) continue;
+                lord.LastFakeAt = Now;
+                return;
+            }
+        }
+
+        /// <summary>Sends one ram (or catapult) at a village from the nearest of the lord's villages that has one in reach.</summary>
+        bool SendFake(Player lord, Village target)
+        {
+            Village from = null;
+            double nearest = AiAttackRange;
+            foreach (var u in VillagesOf(lord.Id))
+            {
+                if (u.TroopCount(UnitType.Ram) + u.TroopCount(UnitType.Catapult) == 0) continue;
+                double d = Distance(u, target);
+                if (d <= nearest)
+                {
+                    nearest = d;
+                    from = u;
+                }
+            }
+            if (from == null) return false;
+            var fake = new int[Units.Count];
+            fake[from.TroopCount(UnitType.Ram) > 0 ? (int)UnitType.Ram : (int)UnitType.Catapult] = 1;
+            return Send(from, target, fake, CommandKind.Attack) != null;
         }
 
         static int GuessWall(Village v) => Math.Min(20, v.Points / 60);
@@ -970,7 +1048,9 @@ namespace MedievalWorldConquest.Simulation
             int wall = known ? note.SeenWall : GuessWall(target);
             // The noblemen have to live through it, so the lord wants an easy win (less so on the tribe's target).
             if (!Beatable(army, expected, known ? note.SeenAt : Now, wall, maxLoss: target == tribeTarget ? 0.5 : 0.35)) return;
-            SendTrain(v, target, army, TrainEscort.Minimal, BuildingType.Wall);
+            var train = SendTrain(v, target, army, TrainEscort.Minimal, BuildingType.Wall);
+            // A noble train at a player is worth hiding among fakes.
+            if (train != null && !target.IsBarbarian) MaybeFakes(lord, target);
         }
 
         /// <summary>A village handed over to this lord, near enough for this village's noblemen and not already under its attack.</summary>

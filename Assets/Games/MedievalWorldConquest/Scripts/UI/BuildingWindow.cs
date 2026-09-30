@@ -24,6 +24,9 @@ namespace MedievalWorldConquest
         readonly ScrollView body;
         readonly HeadquartersView headquarters;
         readonly Dictionary<BuildingType, RecruitView> recruitment = new Dictionary<BuildingType, RecruitView>();
+        /// <summary>The Recruit screen: the barracks, stable and workshop together.</summary>
+        readonly RecruitView recruitAll;
+        bool showingRecruitAll;
         readonly RallyPointView rallyPoint;
         readonly SmithyView smithy;
         readonly MarketView market;
@@ -37,7 +40,7 @@ namespace MedievalWorldConquest
         {
             this.game = game;
             Root = Element("screen", "centered", "dim");
-            Root.style.top = 55; // below the top bar, which stays in view
+            Root.style.top = GameUI.TopBarHeight; // below the top bar, which stays in view
             var panel = Element("panel", "window");
             Root.Add(panel);
 
@@ -55,6 +58,7 @@ namespace MedievalWorldConquest
 
             headquarters = new HeadquartersView(game);
             foreach (var b in TrainingBuildings) recruitment[b] = new RecruitView(game, b);
+            recruitAll = new RecruitView(game, BuildingType.Barracks, BuildingType.Stable, BuildingType.Workshop);
             rallyPoint = new RallyPointView(game, sendTo, links);
             smithy = new SmithyView(game);
             market = new MarketView(game, links);
@@ -62,9 +66,23 @@ namespace MedievalWorldConquest
             Show(Root, false);
         }
 
+        /// <summary>The building to mark in the village (none for the Recruit screen, which is all of them).</summary>
+        public BuildingType? Highlight => showingRecruitAll ? null : Building;
+
+        /// <summary>Opens the Recruit screen: every unit of the barracks, stable and workshop, as in Tribal Wars.</summary>
+        public void OpenRecruitAll()
+        {
+            Building = BuildingType.Barracks;
+            showingRecruitAll = true;
+            body.Clear();
+            body.Add(recruitAll.Root);
+            Show(Root, true);
+        }
+
         public void Open(BuildingType type)
         {
             Building = type;
+            showingRecruitAll = false;
             body.Clear();
             if (type == BuildingType.Headquarters) body.Add(headquarters.Root);
             else if (recruitment.TryGetValue(type, out var recruit)) body.Add(recruit.Root);
@@ -85,6 +103,13 @@ namespace MedievalWorldConquest
         public void Refresh(World world, Village v)
         {
             if (!IsOpen || !Building.HasValue || v == null) return;
+            if (showingRecruitAll)
+            {
+                SetText(title, "Recruit");
+                SetText(description, "Every unit your barracks, stable and workshop train, in one place.");
+                recruitAll.Refresh(world, v);
+                return;
+            }
             var type = Building.Value;
             var def = Buildings.Get(type);
             int level = v.Level(type);
@@ -160,6 +185,23 @@ namespace MedievalWorldConquest
             BuildStatus.NotEnoughResources => $"Not enough resources: ready in {Real(world, check.AffordableIn)}.",
             _ => "",
         };
+
+        /// <summary>
+        /// Every requirement not yet met, with the village's level of each in brackets: "Needs Headquarters 20 (15),
+        /// Smithy 20 (3) and Market 10 (0)." Empty if all are met.
+        /// </summary>
+        public static string Needs(Requirement[] requires, Village v)
+        {
+            var parts = new List<string>();
+            foreach (var r in requires)
+            {
+                int now = v.Level(r.Building);
+                if (now < r.Level) parts.Add($"{Buildings.Get(r.Building).Name} {r.Level} ({now})");
+            }
+            if (parts.Count == 0) return "";
+            string last = parts[parts.Count - 1];
+            return "Needs " + (parts.Count == 1 ? last : string.Join(", ", parts.GetRange(0, parts.Count - 1)) + " and " + last) + ".";
+        }
 
         /// <summary>What a building does at its current level, and at the next one.</summary>
         public static string Effect(World world, BuildingType type, int level, int? next)
@@ -274,11 +316,83 @@ namespace MedievalWorldConquest
                 SetText(button, check.TargetLevel == 1 ? "Build" : $"Upgrade to level {check.TargetLevel}");
                 button.SetEnabled(check.Status == BuildStatus.Ok);
             }
-            SetText(reason, BuildingText.Reason(world, check));
+            // (Everything a building still needs at once, not one requirement at a time.)
+            SetText(reason, check.Status == BuildStatus.NeedsBuilding
+                ? BuildingText.Needs(Buildings.Get(building).Requires, v)
+                : BuildingText.Reason(world, check));
         }
     }
 
     // -------------------------------------------------------------------- headquarters
+
+    /// <summary>
+    /// A queue shown as a fixed number of slots (one for each order it can hold), used or free, so the screen below
+    /// it never moves as orders come and go. Each used slot: what, how long, a progress bar and a cancel button.
+    /// </summary>
+    class QueueSlots
+    {
+        public VisualElement Root { get; }
+        readonly List<(VisualElement slot, Label title, Label time, VisualElement bar, VisualElement fill, Button cancel)> slots =
+            new List<(VisualElement, Label, Label, VisualElement, VisualElement, Button)>();
+        readonly Action[] cancels;
+
+        /// <param name="compact">Slimmer slots, for screens with several queues.</param>
+        public QueueSlots(int count, string cancelText, bool compact = false)
+        {
+            Root = Element("queue-list");
+            cancels = new Action[count];
+            for (int i = 0; i < count; i++)
+            {
+                int index = i;
+                var slot = Element("queue-slot");
+                if (compact) slot.AddToClassList("queue-slot--compact");
+                var text = Element("queue-slot-text");
+                var line = Element("row-header");
+                var title = Text("", "row-title");
+                var time = Text("", "row-level");
+                line.Add(title);
+                line.Add(time);
+                text.Add(line);
+                var bar = Element("progress");
+                var fill = Element("progress-fill");
+                bar.Add(fill);
+                text.Add(bar);
+                slot.Add(text);
+                var cancel = ButtonWith(cancelText, () => cancels[index]?.Invoke(), "btn", "btn--small", "cancel-btn", "queue-cancel");
+                slot.Add(cancel);
+                slots.Add((slot, title, time, bar, fill, cancel));
+                Root.Add(slot);
+            }
+        }
+
+        public int Count => slots.Count;
+
+        /// <summary>A slot in use. <paramref name="progress"/> from 0 to 1; <paramref name="cancel"/> null for no cancel button.</summary>
+        public void SetUsed(int i, string title, string time, double progress, Action cancel)
+        {
+            var s = slots[i];
+            s.slot.EnableInClassList("queue-slot--empty", false);
+            SetText(s.title, title);
+            SetText(s.time, time);
+            // Hidden rather than removed, so every slot keeps its size.
+            s.bar.style.visibility = Visibility.Visible;
+            s.fill.style.width = Length.Percent((float)(100 * Math.Max(0, Math.Min(1, progress))));
+            cancels[i] = cancel;
+            s.cancel.style.visibility = cancel != null ? Visibility.Visible : Visibility.Hidden;
+        }
+
+        /// <summary>A free slot, with a word about it.</summary>
+        public void SetFree(int i, string text)
+        {
+            var s = slots[i];
+            s.slot.EnableInClassList("queue-slot--empty", true);
+            SetText(s.title, text);
+            SetText(s.time, "");
+            s.bar.style.visibility = Visibility.Hidden;
+            cancels[i] = null;
+            s.cancel.style.visibility = Visibility.Hidden;
+        }
+    }
 
     /// <summary>The Headquarters: rename the village, the construction queue, and every building's next upgrade.</summary>
     class HeadquartersView
@@ -287,7 +401,7 @@ namespace MedievalWorldConquest
         readonly MedievalWorldConquestGame game;
         readonly TextField name;
         readonly Label queueTitle;
-        readonly VisualElement queueList;
+        readonly QueueSlots queueSlots;
         readonly Dictionary<BuildingType, (Label level, Label effect, UpgradeBox upgrade)> rows = new Dictionary<BuildingType, (Label, Label, UpgradeBox)>();
         Village shownFor;
 
@@ -309,23 +423,8 @@ namespace MedievalWorldConquest
             // doesn't push the list of buildings down.
             queueTitle = Text("", "heading");
             Root.Add(queueTitle);
-            queueList = Element("queue-list");
-            for (int i = 0; i < World.MaxBuildQueue; i++)
-            {
-                var slot = Element("queue-slot");
-                var text = Element("queue-slot-text");
-                var line = Element("row-header");
-                line.Add(Text("", "row-title"));
-                line.Add(Text("", "row-level"));
-                text.Add(line);
-                var bar = Element("progress");
-                bar.Add(Element("progress-fill"));
-                text.Add(bar);
-                slot.Add(text);
-                slot.Add(ButtonWith("Cancel (full refund)", () => game.CancelLastBuild(), "btn", "btn--small", "cancel-btn", "queue-cancel"));
-                queueList.Add(slot);
-            }
-            Root.Add(queueList);
+            queueSlots = new QueueSlots(World.MaxBuildQueue, "Cancel (full refund)");
+            Root.Add(queueSlots.Root);
 
             Root.Add(Text("Buildings", "heading"));
             foreach (var def in Buildings.Definitions)
@@ -372,38 +471,23 @@ namespace MedievalWorldConquest
         void RefreshQueue(World world, Village v)
         {
             SetText(queueTitle, $"Construction ({v.Queue.Count}/{World.MaxBuildQueue})");
-            for (int i = 0; i < queueList.childCount; i++)
+            for (int i = 0; i < queueSlots.Count; i++)
             {
-                var slot = queueList[i];
-                var title = (Label)slot[0][0][0];
-                var time = (Label)slot[0][0][1];
-                var bar = slot[0][1];
-                var fill = bar[0];
-                var cancel = slot[1];
-                bool used = i < v.Queue.Count;
-                slot.EnableInClassList("queue-slot--empty", !used);
-                // Hidden rather than removed, so every slot keeps its size.
-                bar.style.visibility = used ? Visibility.Visible : Visibility.Hidden;
-                cancel.style.visibility = used && i == v.Queue.Count - 1 ? Visibility.Visible : Visibility.Hidden;
-                if (!used)
+                if (i >= v.Queue.Count)
                 {
-                    SetText(title, i == 0 ? "Nothing being built. Choose an upgrade below." : "Free slot");
-                    SetText(time, "");
+                    queueSlots.SetFree(i, i == 0 ? "Nothing being built. Choose an upgrade below." : "Free slot");
                     continue;
                 }
                 var order = v.Queue[i];
-                SetText(title, $"{Buildings.Get(order.Type).Name} → level {order.Level}");
+                // Only the last order can be canceled: the ones after depend on the levels before them.
+                Action cancel = i == v.Queue.Count - 1 ? game.CancelLastBuild : (Action)null;
+                string title = $"{Buildings.Get(order.Type).Name} → level {order.Level}";
                 if (order.Started)
                 {
                     double left = Math.Max(0, order.FinishTime - world.Now);
-                    SetText(time, Real(world, left));
-                    fill.style.width = Length.Percent((float)(100 * (1 - left / order.Seconds)));
+                    queueSlots.SetUsed(i, title, Real(world, left), 1 - left / order.Seconds, cancel);
                 }
-                else
-                {
-                    SetText(time, $"waiting · {Real(world, order.Seconds)}");
-                    fill.style.width = Length.Percent(0);
-                }
+                else queueSlots.SetUsed(i, title, $"waiting · {Real(world, order.Seconds)}", 0, cancel);
             }
         }
     }
@@ -441,37 +525,51 @@ namespace MedievalWorldConquest
 
     // -------------------------------------------------------------------- recruitment
 
-    /// <summary>A training building: its queue, and each unit it trains with a quantity picker.</summary>
+    /// <summary>
+    /// A training building (its level, queue, and each unit it trains), or, as Tribal Wars' Recruit screen, the
+    /// barracks, stable and workshop together: every unit they train, and all their queues, in one place. Type how
+    /// many to train, or click "(max …)" for as many as can be afforded.
+    /// </summary>
     class RecruitView
     {
         public VisualElement Root { get; }
         readonly MedievalWorldConquestGame game;
         readonly BuildingType building;
+        readonly BuildingType[] buildings;
+        /// <summary>Whether this is the screen for all the training buildings at once (no building of its own).</summary>
+        readonly bool combined;
+        readonly List<UnitDef> units = new List<UnitDef>();
         readonly Label effect, locked;
-        readonly VisualElement queue;
+        readonly Dictionary<BuildingType, (Label heading, QueueSlots slots)> sections = new Dictionary<BuildingType, (Label, QueueSlots)>();
         readonly UpgradeBox upgrade;
-        readonly Dictionary<UnitType, (VisualElement row, Label home, Label count, Label cost, Button recruit, Label reason)> rows =
-            new Dictionary<UnitType, (VisualElement, Label, Label, Label, Button, Label)>();
+        readonly Dictionary<UnitType, (VisualElement row, Label home, IntegerField amount, Button max, Label cost, Button recruit, Label reason)> rows =
+            new Dictionary<UnitType, (VisualElement, Label, IntegerField, Button, Label, Button, Label)>();
         readonly int[] counts = new int[Units.Count];
         readonly VisualElement coinBox;
         readonly Label coinSummary, coinReason;
         readonly CostLine coinCost;
         readonly Button mintOne, mintMax;
 
-        public RecruitView(MedievalWorldConquestGame game, BuildingType building)
+        public RecruitView(MedievalWorldConquestGame game, params BuildingType[] buildings)
         {
             this.game = game;
-            this.building = building;
+            this.buildings = buildings;
+            building = buildings[0];
+            combined = buildings.Length > 1;
+            foreach (var b in buildings) units.AddRange(Units.TrainedAt(b));
             Root = Element("window-section");
-            effect = Text("", "detail-effect");
-            Root.Add(effect);
-            locked = Text("", "row-reason");
-            Root.Add(locked);
-            upgrade = new UpgradeBox(game);
-            Root.Add(upgrade.Root);
+            if (!combined)
+            {
+                effect = Text("", "detail-effect");
+                Root.Add(effect);
+                locked = Text("", "row-reason");
+                Root.Add(locked);
+                upgrade = new UpgradeBox(game);
+                Root.Add(upgrade.Root);
+            }
 
             // The academy on a gold-coin world: minting coins for noble slots.
-            if (building == BuildingType.Academy)
+            if (building == BuildingType.Academy && !combined)
             {
                 coinBox = Element("coin-box");
                 coinBox.Add(Text("Gold coins", "heading"));
@@ -495,12 +593,17 @@ namespace MedievalWorldConquest
                 Root.Add(coinBox);
             }
 
-            Root.Add(Text("Training", "heading"));
-            queue = Element("queue-list");
-            Root.Add(queue);
-
-            Root.Add(Text("Recruit", "heading"));
-            foreach (var u in Units.TrainedAt(building)) Root.Add(UnitRow(u));
+            // Each building: what it's training (a slot for every batch it can queue, used or free), then its units.
+            foreach (var b in buildings)
+            {
+                var heading = Text("", "heading");
+                Root.Add(heading);
+                var slots = new QueueSlots(World.MaxRecruitQueue, "Cancel (refund untrained)", compact: true);
+                Root.Add(slots.Root);
+                sections[b] = (heading, slots);
+                if (!combined) Root.Add(Text("Recruit", "heading"));
+                foreach (var u in Units.TrainedAt(b)) Root.Add(UnitRow(u));
+            }
         }
 
         VisualElement UnitRow(UnitDef u)
@@ -520,14 +623,16 @@ namespace MedievalWorldConquest
             var cost = Text("", "row-info");
             row.Add(cost);
 
+            // How many: typed, or "(max …)" for all that can be afforded.
             var controls = Element("unit-controls");
-            controls.Add(ButtonWith("-10", () => Adjust(type, -10), "btn", "btn--small", "count-btn"));
-            controls.Add(ButtonWith("-1", () => Adjust(type, -1), "btn", "btn--small", "count-btn"));
-            var count = Text("0", "unit-count");
-            controls.Add(count);
-            controls.Add(ButtonWith("+1", () => Adjust(type, 1), "btn", "btn--small", "count-btn"));
-            controls.Add(ButtonWith("+10", () => Adjust(type, 10), "btn", "btn--small", "count-btn"));
-            controls.Add(ButtonWith("Max", () => counts[(int)type] = int.MaxValue, "btn", "btn--small", "count-btn"));
+            var amount = new IntegerField { value = 0 };
+            amount.AddToClassList("amount-field");
+            amount.AddToClassList("send-amount");
+            amount.RegisterValueChangedCallback(e => counts[(int)type] = Math.Max(0, e.newValue));
+            controls.Add(amount);
+            var max = Link("", () => counts[(int)type] = int.MaxValue, "send-all");
+            max.tooltip = "As many as you can afford";
+            controls.Add(max);
             var recruit = ButtonWith("", () =>
             {
                 if (game.Recruit(type, counts[(int)type])) counts[(int)type] = 0;
@@ -536,31 +641,28 @@ namespace MedievalWorldConquest
             row.Add(controls);
             var reason = Text("", "row-reason");
             row.Add(reason);
-            rows[type] = (row, home, count, cost, recruit, reason);
+            rows[type] = (row, home, amount, max, cost, recruit, reason);
             return row;
-        }
-
-        void Adjust(UnitType type, int delta)
-        {
-            long value = (long)counts[(int)type] + delta;
-            counts[(int)type] = (int)Math.Max(0, Math.Min(int.MaxValue, value));
         }
 
         public void Refresh(World world, Village v)
         {
-            var def = Buildings.Get(building);
-            int level = v.Level(building), next = v.NextLevel(building);
-            SetText(effect, BuildingText.Effect(world, building, level, next <= def.MaxLevel ? next : (int?)null));
-            Show(locked, level == 0);
-            if (level == 0)
+            if (!combined)
             {
-                var needs = Array.ConvertAll(def.Requires, r => $"{Buildings.Get(r.Building).Name} {r.Level}");
-                SetText(locked, needs.Length > 0 ? $"Not built yet (needs {string.Join(" and ", needs)})." : "Not built yet.");
+                var def = Buildings.Get(building);
+                int level = v.Level(building), next = v.NextLevel(building);
+                SetText(effect, BuildingText.Effect(world, building, level, next <= def.MaxLevel ? next : (int?)null));
+                Show(locked, level == 0);
+                if (level == 0)
+                {
+                    var needs = Array.ConvertAll(def.Requires, r => $"{Buildings.Get(r.Building).Name} {r.Level}");
+                    SetText(locked, needs.Length > 0 ? $"Not built yet (needs {string.Join(" and ", needs)})." : "Not built yet.");
+                }
+                upgrade.Refresh(world, v, building);
             }
-            upgrade.Refresh(world, v, building);
             if (coinBox != null) RefreshCoins(world, v);
             RefreshQueue(world, v);
-            foreach (var u in Units.TrainedAt(building)) RefreshUnit(world, v, u);
+            foreach (var u in units) RefreshUnit(world, v, u);
         }
 
         /// <summary>Coins minted, noble slots in use and free, and what the next slot needs.</summary>
@@ -589,50 +691,42 @@ namespace MedievalWorldConquest
             });
         }
 
+        /// <summary>Each building's heading and what it's training, a slot per batch.</summary>
         void RefreshQueue(World world, Village v)
         {
-            var orders = v.Recruitment.FindAll(o => o.Building == building);
-            string signature = string.Join(",", orders.ConvertAll(o => o.Id.ToString()));
-            if ((string)queue.userData != signature)
+            foreach (var b in buildings)
             {
-                queue.userData = signature;
-                queue.Clear();
-                if (orders.Count == 0) queue.Add(Text("Nobody in training.", "row-info"));
-                foreach (var order in orders)
+                var (heading, slots) = sections[b];
+                var orders = v.Recruitment.FindAll(o => o.Building == b);
+                int level = v.Level(b);
+                SetText(heading, combined
+                    ? $"{Buildings.Get(b).Name}  ·  {(level > 0 ? $"level {level}" : "not built")}  ·  training {orders.Count}/{World.MaxRecruitQueue}"
+                    : $"Training ({orders.Count}/{World.MaxRecruitQueue})");
+                for (int i = 0; i < slots.Count; i++)
                 {
-                    int id = order.Id;
-                    var item = Element("queue-item", "recruit-item");
-                    var line = Element("row-header");
-                    line.Add(Text("", "row-title"));
-                    line.Add(Text("", "row-level"));
-                    item.Add(line);
-                    var bar = Element("progress");
-                    bar.Add(Element("progress-fill"));
-                    item.Add(bar);
-                    item.Add(ButtonWith("Cancel (refund untrained)", () => game.CancelRecruit(id), "btn", "btn--small", "cancel-btn"));
-                    queue.Add(item);
+                    if (i >= orders.Count)
+                    {
+                        slots.SetFree(i, i > 0 ? "Free slot" : level > 0 ? "Nobody in training." : "Not built yet.");
+                        continue;
+                    }
+                    var o = orders[i];
+                    int id = o.Id;
+                    string time = o.Started
+                        ? $"next {Real(world, Math.Max(0, o.NextAt - world.Now))} · all {Real(world, Math.Max(0, o.FinishTime(world.Now) - world.Now))}"
+                        : $"waiting · {Real(world, o.Remaining * o.SecondsEach)}";
+                    slots.SetUsed(i, $"{Units.Get(o.Unit).Name}  {o.Done}/{o.Total}", time, (double)o.Done / o.Total, () => game.CancelRecruit(id));
                 }
-            }
-
-            for (int i = 0; i < orders.Count && i < queue.childCount; i++)
-            {
-                var o = orders[i];
-                var line = queue[i][0];
-                SetText((Label)line[0], $"{Units.Get(o.Unit).Name}  {o.Done}/{o.Total}");
-                SetText((Label)line[1], o.Started
-                    ? $"next {Real(world, Math.Max(0, o.NextAt - world.Now))} · all {Real(world, Math.Max(0, o.FinishTime(world.Now) - world.Now))}"
-                    : $"waiting · {Real(world, o.Remaining * o.SecondsEach)}");
-                queue[i].Q<VisualElement>(className: "progress-fill").style.width = Length.Percent(100f * o.Done / o.Total);
             }
         }
 
         void RefreshUnit(World world, Village v, UnitDef u)
         {
-            var (row, home, countLabel, cost, recruit, reason) = rows[u.Type];
+            var (row, home, amount, maxLink, cost, recruit, reason) = rows[u.Type];
             int max = world.MaxAffordable(v, u.Type);
             ref int count = ref counts[(int)u.Type];
-            if (count == int.MaxValue) count = max; // "Max" pressed: what's affordable now
-            SetText(countLabel, count.ToString("N0"));
+            if (count == int.MaxValue) count = max; // "(max …)" clicked: what's affordable now
+            if (amount.value != count) amount.SetValueWithoutNotify(count);
+            SetText(maxLink, $"(max {max:N0})");
             SetText(home, $"{v.TroopCount(u.Type):N0} at home");
 
             var check = world.CheckRecruit(v, u.Type, Math.Max(1, count));

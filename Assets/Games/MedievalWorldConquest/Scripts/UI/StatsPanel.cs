@@ -150,7 +150,7 @@ namespace MedievalWorldConquest
         {
             body.Add(Text("The last seven days", "row-title", "stats-heading"));
             var header = Element("ranking-row", "ranking-header");
-            header.Add(Text("Day", "ranking-rank"));
+            header.Add(Text("Day", "ranking-rank", "stats-day"));
             header.Add(Text("Plundered", "ranking-number", "stats-wide"));
             header.Add(Text("Troops fallen", "ranking-number", "stats-wide"));
             header.Add(Text("Conquered", "ranking-number"));

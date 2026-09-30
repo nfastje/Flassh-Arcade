@@ -38,6 +38,8 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>The most villages the lord has held (checked twice a day), and when they last lost one to another player (-1: never).</summary>
         public int PeakVillages;
         public double LostVillageAt = -1;
+        /// <summary>When the lord last sent a fake on its own (not alongside a real attack); -1: never.</summary>
+        public double LastFakeAt = -1;
         /// <summary>The lord's statistics (by <see cref="StatKind"/>): all time, and where they stood when the day and the week began.</summary>
         public long[] Stats = new long[World.StatKinds], StatsDayStart = new long[World.StatKinds], StatsWeekStart = new long[World.StatKinds];
         /// <summary>For noobs: when they recently lost fights in their villages (too many in a short time and they quit).</summary>
@@ -263,6 +265,8 @@ namespace MedievalWorldConquest.Simulation
             if (Relations == null) Relations = new List<TribeRelation>();
             if (Messages == null) Messages = new List<Message>();
             if (HoldBloc == null) HoldBloc = new List<int>();
+            // The goal used to be 60% (of the villages players rule); every world now plays for half the realm.
+            if (Math.Abs(Settings.ConquestGoal - 0.6f) < 1e-4f) Settings.ConquestGoal = WorldSettings.StandardGoal;
             // Version 20: factions, handed-over villages and statistics (counted from now on).
             if (savedVersion < 20)
             {

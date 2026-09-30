@@ -37,6 +37,93 @@ namespace MedievalWorldConquest
     /// as messages); in a tribe, its members, relations with other tribes, its target and the player's options:
     /// asking for support, leaving, and for a leader, expelling members, making pacts and war.
     /// </summary>
+    /// <summary>
+    /// The tribe's villages under attack (tribe mates', not the player's own, which are in the village view): each
+    /// attack's speed as a unit icon (all a defender can tell), where and whose, who from, when it lands, whether
+    /// the player's troops could get there first, and a link to send support. Countdowns update in place; rows are
+    /// rebuilt only when attacks come and go.
+    /// </summary>
+    class UnderAttackList
+    {
+        public VisualElement Root { get; }
+        readonly UiLinks links;
+        readonly Label heading;
+        readonly VisualElement rows;
+        readonly List<(Command attack, Village target, Label lands, Label reach)> shown = new List<(Command, Village, Label, Label)>();
+        string signature;
+
+        const int MaxShown = 25;
+
+        public UnderAttackList(UiLinks links)
+        {
+            this.links = links;
+            Root = Element("under-attack");
+            heading = Text("Under attack", "heading");
+            Root.Add(heading);
+            rows = Element();
+            Root.Add(rows);
+        }
+
+        public void Refresh(World world, Tribe tribe)
+        {
+            var human = world.HumanPlayer;
+            var attacks = new List<(Command c, Village to)>();
+            foreach (var c in world.Commands)
+            {
+                if (c.Kind != CommandKind.Attack) continue;
+                var to = world.FindVillage(c.ToVillageId);
+                if (to == null || to.IsBarbarian || to.OwnerId == human.Id || c.OwnerId == to.OwnerId) continue;
+                if (world.FindPlayer(to.OwnerId)?.TribeId != tribe.Id) continue;
+                attacks.Add((c, to));
+            }
+            attacks.Sort((a, b) => a.c.ArriveTime.CompareTo(b.c.ArriveTime));
+            if (attacks.Count > MaxShown) attacks.RemoveRange(MaxShown, attacks.Count - MaxShown);
+
+            string now = string.Join(",", attacks.ConvertAll(a => a.c.Id.ToString()));
+            if (now != signature)
+            {
+                signature = now;
+                rows.Clear();
+                shown.Clear();
+                if (attacks.Count == 0) rows.Add(Text("No tribe mate's village is under attack.", "row-info"));
+                foreach (var (c, to) in attacks)
+                {
+                    var speed = AttackSpeeds.Of(c.Troops);
+                    var row = Element("under-attack-row");
+                    row.EnableInClassList("under-attack-row--danger", AttackSpeeds.IsDangerous(speed));
+                    var icon = Icons.Element(Icons.Unit(AttackSpeeds.Icon(speed)), 22, "attack-speed-icon");
+                    icon.pickingMode = PickingMode.Position;
+                    icon.tooltip = AttackSpeeds.Describe(speed);
+                    row.Add(icon);
+                    int villageId = to.Id, ownerId = to.OwnerId, attackerId = c.OwnerId;
+                    var owner = world.FindPlayer(ownerId);
+                    var attacker = world.FindPlayer(attackerId);
+                    row.Add(Link($"{to.Name} ({to.X}|{to.Y})", () => links.OpenVillage(villageId)));
+                    if (owner != null) row.Add(Link(owner.Name, () => links.OpenPlayer(ownerId), "link--owner"));
+                    row.Add(Text("from", "row-level"));
+                    if (attacker != null) row.Add(Link(world.NameWithTag(attacker), () => links.OpenPlayer(attackerId), "link--owner"));
+                    row.Add(Element("spacer"));
+                    var lands = Text("", "row-level", "under-attack-when");
+                    row.Add(lands);
+                    var reach = Text("", "row-level", "under-attack-reach");
+                    row.Add(reach);
+                    row.Add(ButtonWith("Send support", () => links.SendTroops(villageId), "btn", "btn--small", "count-btn"));
+                    rows.Add(row);
+                    shown.Add((c, to, lands, reach));
+                }
+            }
+
+            SetText(heading, attacks.Count > 0 ? $"Under attack  ·  {attacks.Count}{(attacks.Count == MaxShown ? "+" : "")}" : "Under attack");
+            foreach (var (c, to, lands, reach) in shown)
+            {
+                SetText(lands, $"lands {World.FormatClock(c.ArriveTime)}  ·  {Real(world, Math.Max(0, c.ArriveTime - world.Now))}");
+                bool canReach = world.HumanCanReach(to, c.ArriveTime);
+                SetText(reach, canReach ? "you can make it" : "too far for you");
+                reach.EnableInClassList("under-attack-reach--no", !canReach);
+            }
+        }
+    }
+
     public class TribePanel
     {
         public VisualElement Root { get; }
@@ -45,6 +132,7 @@ namespace MedievalWorldConquest
         readonly UiLinks links;
         readonly Action<string, Action> confirm;
         readonly ScrollView body;
+        readonly UnderAttackList underAttack;
         readonly TextField nameField, tagField;
         readonly VisualElement foundBox;
         readonly Label foundMessage;
@@ -80,6 +168,7 @@ namespace MedievalWorldConquest
             foundBox.Add(row);
             foundMessage = Text("", "row-reason");
             foundBox.Add(foundMessage);
+            underAttack = new UnderAttackList(links);
         }
 
         public void Refresh(World world)
@@ -91,11 +180,15 @@ namespace MedievalWorldConquest
             var tribe = world.TribeOf(human);
 
             string now = TribeSignature(world, tribe) + "|" + human.AskedToJoinTribe + "|" + world.HoldTribeId + ":" + world.HoldSince;
-            if (now == signature) return;
-            signature = now;
-            body.Clear();
-            if (tribe == null) ShowNoTribe(world, human);
-            else ShowTribe(world, human, tribe);
+            if (now != signature)
+            {
+                signature = now;
+                body.Clear();
+                if (tribe == null) ShowNoTribe(world, human);
+                else ShowTribe(world, human, tribe);
+            }
+            // (Kept between rebuilds, and brought up to date every second.)
+            if (tribe != null) underAttack.Refresh(world, tribe);
         }
 
         static string TribeSignature(World world, Tribe tribe)
@@ -146,7 +239,7 @@ namespace MedievalWorldConquest
             line.Add(Text($"·  {tribe.Members.Count} of {World.MaxTribeMembers} members  ·  {points:N0} points  ·  {villages:N0} villages  ·  mood: {TribeText.Mood(tribe)}", "row-info", "link-text"));
             body.Add(line);
             double bloc = world.BlocShare(tribe);
-            body.Add(Text($"With its allies (and theirs) your tribe holds {bloc:P1} of the {world.GoalVillagesLabel}. Hold {world.Settings.ConquestGoal:P0} together, or on your own, for {World.HoldDays:0} days to win the world.", "row-info"));
+            body.Add(Text($"With its allies your tribe holds {bloc:P1} of the {world.GoalVillagesLabel}. Hold {world.Settings.ConquestGoal:P0} together, or on your own, for {World.HoldDays:0} days to win the world.", "row-info"));
             string hold = RankingPanel.HoldStatus(world);
             if (hold.Length > 0) body.Add(Text(hold, "row-info", "protection-note"));
 
@@ -171,6 +264,9 @@ namespace MedievalWorldConquest
                 ? "Leave your tribe? The strongest member will lead it."
                 : "Leave your tribe?", () => game.LeaveTribe()), "btn", "btn--small"));
             body.Add(actions);
+
+            // Tribe mates' villages under attack (the list keeps itself up to date).
+            body.Add(underAttack.Root);
 
             // Members.
             body.Add(Text("Members", "heading"));

@@ -152,12 +152,21 @@ namespace MedievalWorldConquest.Tests
             var lords = Lords(world);
             var tribe = world.FoundTribe(human, "Mine", "MI");
             world.JoinTribe(lords[0], tribe);
-            var attacker = HomeOf(world, lords[1]);
+            var target = HomeOf(world, lords[0]);
+            // The attacker furthest off, so the human's cavalry can get there first.
+            var attacker = lords.Skip(1).Select(l => HomeOf(world, l)).OrderByDescending(v => World.Distance(v, target)).First();
+            world.PlayerVillage.Troops[(int)UnitType.HeavyCavalry] = 20;
             attacker.Troops[(int)UnitType.Axeman] = 100;
-            world.Send(attacker, HomeOf(world, lords[0]), Army(UnitType.Axeman, 100), CommandKind.Attack);
+            attacker.Troops[(int)UnitType.Nobleman] = 1;
+
+            // An attack at infantry speed is left to the village: no message.
+            world.Send(attacker, target, Army(UnitType.Axeman, 100), CommandKind.Attack);
+            Assert.IsFalse(world.Messages.Any(m => m.Kind == MessageKind.SupportRequest));
+            // Noblemen coming (nobleman speed), and the human can get there in time: they're asked.
+            world.Send(attacker, target, Army(UnitType.Nobleman, 1), CommandKind.Attack);
             var request = world.Messages.LastOrDefault(m => m.Kind == MessageKind.SupportRequest);
             Assert.IsNotNull(request);
-            Assert.AreEqual(HomeOf(world, lords[0]).Id, request.A);
+            Assert.AreEqual(target.Id, request.A);
 
             double before = human.Satisfaction;
             world.PlayerVillage.Troops[(int)UnitType.Spearman] = 50;

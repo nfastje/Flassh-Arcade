@@ -20,8 +20,8 @@ namespace MedievalWorldConquest
         readonly MedievalWorldConquestGame game;
         readonly int[] selected = new int[Units.Count];
         readonly VisualElement[] rows = new VisualElement[Units.Count];
-        readonly Label[] counts = new Label[Units.Count];
-        readonly Label[] available = new Label[Units.Count];
+        readonly IntegerField[] amounts = new IntegerField[Units.Count];
+        readonly Button[] allLinks = new Button[Units.Count];
         readonly Label title, summary, reason, nothingHome;
         readonly Button attack, support;
         readonly VisualElement catapultRow, trainRow;
@@ -40,28 +40,33 @@ namespace MedievalWorldConquest
 
             var quick = Element("option-row");
             quick.Add(ButtonWith("All troops", () => SelectAll(), "btn", "btn--small", "count-btn"));
-            quick.Add(ButtonWith("Clear", () => Array.Clear(selected, 0, selected.Length), "btn", "btn--small", "count-btn"));
+            quick.Add(ButtonWith("None", () => Array.Clear(selected, 0, selected.Length), "btn", "btn--small", "count-btn"));
             panel.Add(quick);
 
             nothingHome = Text("You have no troops at home to send.", "row-reason");
             panel.Add(nothingHome);
 
+            // As in Tribal Wars: for each unit, a box to type how many, and links for all of them or none.
             foreach (var type in Units.InDisplayOrder)
             {
                 var u = Units.Get(type);
+                int index = (int)type;
                 var row = Element("send-row");
                 row.Add(Icons.Element(Icons.Unit(type), 20, "send-icon"));
                 row.Add(Text(u.Name, "row-title", "send-name"));
-                available[(int)type] = Text("", "row-level", "send-available");
-                row.Add(available[(int)type]);
-                row.Add(ButtonWith("-10", () => Adjust(type, -10), "btn", "btn--small", "count-btn"));
-                row.Add(ButtonWith("-1", () => Adjust(type, -1), "btn", "btn--small", "count-btn"));
-                counts[(int)type] = Text("0", "unit-count");
-                row.Add(counts[(int)type]);
-                row.Add(ButtonWith("+1", () => Adjust(type, 1), "btn", "btn--small", "count-btn"));
-                row.Add(ButtonWith("+10", () => Adjust(type, 10), "btn", "btn--small", "count-btn"));
-                row.Add(ButtonWith("All", () => selected[(int)type] = int.MaxValue, "btn", "btn--small", "count-btn"));
-                rows[(int)type] = row;
+                var field = new IntegerField { value = 0 };
+                field.AddToClassList("amount-field");
+                field.AddToClassList("send-amount");
+                field.RegisterValueChangedCallback(e => selected[index] = Math.Max(0, e.newValue));
+                amounts[index] = field;
+                row.Add(field);
+                allLinks[index] = Link("", () => selected[index] = int.MaxValue, "send-all");
+                allLinks[index].tooltip = "Send them all";
+                row.Add(allLinks[index]);
+                row.Add(Link("none", () => selected[index] = 0, "send-none"));
+                // One more (a lone scout for a raid, say) without typing; never more than are home.
+                row.Add(Link("+1", () => selected[index] = selected[index] == int.MaxValue ? int.MaxValue : selected[index] + 1, "send-plus"));
+                rows[index] = row;
                 panel.Add(row);
             }
 
@@ -109,15 +114,31 @@ namespace MedievalWorldConquest
 
         public void Close() => Show(Root, false);
 
-        void Adjust(UnitType type, int delta)
-        {
-            long value = (long)selected[(int)type] + delta;
-            selected[(int)type] = (int)Math.Max(0, Math.Min(int.MaxValue, value));
-        }
-
         void SelectAll()
         {
             for (int i = 0; i < selected.Length; i++) selected[i] = int.MaxValue; // clamped to what's home on refresh
+        }
+
+        /// <summary>
+        /// When the next attack the player knows of lands on a village: on their own, the attacks they can see
+        /// coming; on a tribe mate's, the ones the tribe has been asked for help against. Null if none.
+        /// </summary>
+        static double? NextAttackOn(World world, Village target)
+        {
+            var human = world.HumanPlayer;
+            if (human == null) return null;
+            double? first = null;
+            if (target.OwnerId == human.Id)
+            {
+                foreach (var c in world.IncomingAttacks(human.Id))
+                    if (c.ToVillageId == target.Id && (first == null || c.ArriveTime < first)) first = c.ArriveTime;
+                return first;
+            }
+            var tribe = world.TribeOf(human);
+            if (tribe == null) return null;
+            foreach (var call in tribe.HelpCalls)
+                if (call.VillageId == target.Id && call.ArriveTime > world.Now && (first == null || call.ArriveTime < first)) first = call.ArriveTime;
+            return first;
         }
 
         void Send(CommandKind kind)
@@ -129,6 +150,16 @@ namespace MedievalWorldConquest
         }
 
         bool IsTrain => selected[(int)UnitType.Nobleman] >= 2;
+
+        /// <summary>For support to a village under attack: whether it gets there before the next attack does.</summary>
+        static string InTimeLine(World world, Village target, SendCheck support)
+        {
+            var lands = NextAttackOn(world, target);
+            if (lands == null || support.Status != SendStatus.Ok) return "";
+            double left = lands.Value - world.Now, margin = left - support.Seconds;
+            return $"\nAn attack lands there in {Real(world, left)}: support sent now " +
+                   (margin >= 0 ? $"gets there {Real(world, margin)} before it." : $"would be {Real(world, -margin)} too late. Send faster units, or from nearer.");
+        }
 
         /// <summary>What the train looks like: how many attacks, and how strong the first one is.</summary>
         string TrainLine(World world, Village home, Village target)
@@ -158,11 +189,12 @@ namespace MedievalWorldConquest
             for (int i = 0; i < Units.Count; i++)
             {
                 int atHome = home.TroopCount((UnitType)i);
-                selected[i] = Math.Min(selected[i], atHome); // never more than are home
+                selected[i] = Math.Max(0, Math.Min(selected[i], atHome)); // never more than are home
                 Show(rows[i], atHome > 0);
                 any |= atHome > 0;
-                SetText(available[i], $"{atHome:N0} home");
-                SetText(counts[i], selected[i].ToString("N0"));
+                SetText(allLinks[i], $"({atHome:N0})");
+                // What's typed stays as typed (unless it's more than there are); the links and buttons show here.
+                if (amounts[i].value != selected[i]) amounts[i].SetValueWithoutNotify(selected[i]);
             }
             Show(nothingHome, !any);
 
@@ -175,7 +207,8 @@ namespace MedievalWorldConquest
                     $"Distance {World.Distance(home, target):0.0} fields  ·  pace of the slowest: {Units.Get(attackCheck.Slowest).Name}\n" +
                     $"Travel time {Real(world, attackCheck.Seconds)}  ·  arrives {World.FormatClock(world.Now + attackCheck.Seconds)}\n" +
                     $"Attack strength {attackCheck.Attack:N0}  ·  can carry {attackCheck.Carry:N0} loot" +
-                    (target.OwnerId != home.OwnerId && IsTrain ? TrainLine(world, home, target) : ""));
+                    (target.OwnerId != home.OwnerId && IsTrain ? TrainLine(world, home, target) : "") +
+                    InTimeLine(world, target, supportCheck));
 
             bool own = target.OwnerId == home.OwnerId;
             Show(trainRow, !own && selected[(int)UnitType.Nobleman] >= 2);

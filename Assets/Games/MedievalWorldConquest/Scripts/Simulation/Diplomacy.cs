@@ -544,8 +544,11 @@ namespace MedievalWorldConquest.Simulation
         // ---------------------------------------------------------------- calls for help
 
         /// <summary>
-        /// When an attack is sent at a tribe member's village (anything but a small raid, unless it's the human's),
-        /// the tribe is asked to help; the human, if a tribe mate, gets a message (not too many).
+        /// When an attack is sent at a tribe member's village, the tribe can only judge it as a defender would: by
+        /// its speed. Swordsman speed or slower (a real attack, or a fake meant to look like one) and the tribe is
+        /// asked to help; scouts and cavalry raids are left to the village. The human, if a tribe mate, only hears
+        /// of nobleman-speed attacks (the village may fall), and only if one of their villages could get there in
+        /// time; everything else is in the tribe's list of villages under attack.
         /// </summary>
         void OnAttackSent(Command c, Village from, Village to)
         {
@@ -556,20 +559,47 @@ namespace MedievalWorldConquest.Simulation
             {
                 var attackerTribe = TribeOf(c.OwnerId);
                 if (attackerTribe != null) CountIncident(attackerTribe, tribe);
+                var speed = AttackSpeeds.Of(c.Troops);
                 int power = 0;
                 for (int i = 0; i < Units.Count && i < c.Troops.Length; i++) power += c.Troops[i] * Units.Get((UnitType)i).Attack;
-                if ((power >= 500 || victim.IsHuman) && tribe.HelpCalls.Count < 30)
+                bool worthHelp = HelpBySpeed ? AttackSpeeds.WorthHelp(speed) : power >= 500 || victim.IsHuman;
+                if (worthHelp && tribe.HelpCalls.Count < 30)
                 {
                     tribe.HelpCalls.Add(new HelpCall { VillageId = to.Id, OwnerId = victim.Id, AttackerId = c.OwnerId, ArriveTime = c.ArriveTime });
                     var human = HumanPlayer;
-                    if (human != null && human.TribeId == tribe.Id && !victim.IsHuman && SupportRequestsToday() < 4
+                    if (human != null && human.TribeId == tribe.Id && !victim.IsHuman && speed == AttackSpeed.Nobleman
+                        && HumanCanReach(to, c.ArriveTime) && SupportRequestsToday() < 4
                         && !Messages.Exists(m => m.Kind == MessageKind.SupportRequest && m.A == to.Id && Now - m.Time < 12 * 3600))
-                        Write(MessageKind.SupportRequest, victim, $"Attack on {to.Name} ({to.X}|{to.Y})",
-                            $"{NameWithTag(FindPlayer(c.OwnerId))} is attacking my village. It lands {FormatClock(c.ArriveTime)}. Can you send support?", to.Id, tribeId: tribe.Id);
+                        Write(MessageKind.SupportRequest, victim, $"Noblemen coming for {to.Name} ({to.X}|{to.Y})",
+                            $"{NameWithTag(FindPlayer(c.OwnerId))} is sending an attack at nobleman speed: they mean to take my village. It lands {FormatClock(c.ArriveTime)}. " +
+                            "You're near enough to get there first. Can you send support?", to.Id, tribeId: tribe.Id);
                 }
             }
             // The human breaking faith: attacking a tribe mate or a friendly tribe.
             if (FindPlayer(c.OwnerId)?.IsHuman == true && victim != null && AreFriendly(c.OwnerId, victim.Id)) HumanBetrays(victim);
+        }
+
+        /// <summary>Whether tribes judge attacks by speed alone, as a defender must (false: by their real strength, as before). A tuning value.</summary>
+        public static bool HelpBySpeed = true;
+
+        static readonly UnitType[] DefendersFastestFirst = { UnitType.HeavyCavalry, UnitType.Spearman, UnitType.Archer, UnitType.Swordsman };
+
+        /// <summary>Whether one of the human's villages has defenders who could reach a village before this time.</summary>
+        public bool HumanCanReach(Village to, double arriveTime)
+        {
+            var human = HumanPlayer;
+            if (human == null) return false;
+            foreach (var v in VillagesOf(human.Id))
+            {
+                if (v == to) continue;
+                foreach (var type in DefendersFastestFirst)
+                {
+                    if (v.TroopCount(type) <= 0) continue;
+                    if (Now + TravelSeconds(v, to, type) <= arriveTime) return true;
+                    break; // its fastest defenders are too slow: the rest are slower still
+                }
+            }
+            return false;
         }
 
         int SupportRequestsToday() => Messages.FindAll(m => m.Kind == MessageKind.SupportRequest && Now - m.Time < SecondsPerDay).Count;
@@ -1398,16 +1428,16 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>
-        /// On a diplomacy world the goal counts every village (a tuning switch while the endgame is balanced);
-        /// otherwise only the players' villages count.
+        /// Whether the goal counts every village, barbarians' included (on every world, for now); if not, only the
+        /// players' villages count.
         /// </summary>
         public static bool GoalOverAllVillages = true;
 
         /// <summary>How many villages the conquest goal is a share of.</summary>
-        public int GoalVillageCount => Diplomacy && GoalOverAllVillages ? Villages.Count : LordVillageCount;
+        public int GoalVillageCount => GoalOverAllVillages ? Villages.Count : LordVillageCount;
 
-        /// <summary>How the goal's villages are described ("villages", or "villages players rule").</summary>
-        public string GoalVillagesLabel => Diplomacy && GoalOverAllVillages ? "villages in the realm" : "villages players rule";
+        /// <summary>How the goal's villages are described ("villages in the realm", or "villages players rule").</summary>
+        public string GoalVillagesLabel => GoalOverAllVillages ? "villages in the realm" : "villages players rule";
 
         /// <summary>The biggest share any bloc holds.</summary>
         public double BiggestBlocShare()

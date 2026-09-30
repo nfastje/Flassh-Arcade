@@ -47,6 +47,31 @@ namespace MedievalWorldConquest
 
         public abstract void Refresh(World world);
 
+        // Text that changes by the second (countdowns, stores) is updated in place, so the window is only rebuilt
+        // when what it shows changes: rebuilding replaces its buttons, and a click that starts on the old button
+        // and ends on the new one does nothing.
+        readonly List<(Label label, Func<string> text)> live = new List<(Label, Func<string>)>();
+
+        /// <summary>Empties the window for rebuilding.</summary>
+        protected void Clear()
+        {
+            body.Clear();
+            live.Clear();
+        }
+
+        /// <summary>A line of text kept up to date every frame.</summary>
+        protected Label Live(Func<string> text, params string[] classes)
+        {
+            var label = Text(text(), classes);
+            live.Add((label, text));
+            return label;
+        }
+
+        protected void RefreshLive()
+        {
+            foreach (var (label, text) in live) SetText(label, text());
+        }
+
         /// <summary>A line of text with link buttons in it: pieces are strings (plain) or (text, action) pairs (links).</summary>
         protected static VisualElement Line(params object[] pieces)
         {
@@ -106,12 +131,17 @@ namespace MedievalWorldConquest
             var home = world.PlayerVillage;
             var about = world.ReportsAbout(v.Id);
             var moving = world.HumanPlayer == null ? new List<Command>() : world.CommandsOf(world.HumanPlayer.Id).FindAll(c => c.ToVillageId == v.Id || c.FromVillageId == v.Id);
-            string now = $"{v.OwnerId}|{v.Name}|{v.Points}|{about.Count}|{moving.Count}|{home?.Id}|{(int)(world.Now / 60)}|{(int)v.Loyalty}";
-            if (now == signature) return;
-            signature = now;
-            body.Clear();
-
             bool mine = v.OwnerId == world.HumanPlayer?.Id;
+            string now = $"{v.OwnerId}|{v.Name}|{v.Points}|{about.Count}|{moving.Count}|{home?.Id}|{(int)v.Loyalty}|{world.IsProtected(v.OwnerId)}" +
+                         (mine ? "|" + string.Join(",", v.Troops) : "");
+            if (now == signature)
+            {
+                RefreshLive();
+                return;
+            }
+            signature = now;
+            Clear();
+
             var owner = world.FindPlayer(v.OwnerId);
             var ownerTribe = world.TribeOf(owner);
             body.Add(owner == null
@@ -126,7 +156,7 @@ namespace MedievalWorldConquest
             body.Add(Line($"Location: ({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}  ·  {world.TerrainAt(v.X, v.Y)}" + (home != null && home != v ? $"  ·  {World.Distance(home, v):0.0} fields from {home.Name}" : "")));
             body.Add(Line($"Points: {v.Points:N0}" + (mine && v.Loyalty < World.MaxLoyalty ? $"  ·  loyalty {Math.Floor(v.Loyalty):0}" : "")));
             if (owner != null && !mine && world.IsProtected(owner.Id))
-                body.Add(Text($"Under beginner protection for {Real(world, owner.ProtectedUntil - world.Now)}: it can't be attacked yet.", "row-info", "protection-note"));
+                body.Add(Live(() => $"Under beginner protection for {Real(world, Math.Max(0, owner.ProtectedUntil - world.Now))}: it can't be attacked yet.", "row-info", "protection-note"));
 
             // What can be done from here.
             var actions = Element("option-row", "info-actions");
@@ -143,7 +173,7 @@ namespace MedievalWorldConquest
             actions.Add(ButtonWith("Show on map", () => links.ShowOnMap(v.Id), "btn", "btn--small"));
             body.Add(actions);
 
-            if (mine) ShowOwnVillage(v);
+            if (mine) ShowOwnVillage(world, v);
             else ShowIntel(world, v, about);
 
             if (moving.Count > 0)
@@ -154,7 +184,9 @@ namespace MedievalWorldConquest
                 {
                     string what = c.Kind == CommandKind.Attack ? "Attack" : c.Kind == CommandKind.Support ? "Support"
                         : c.Kind == CommandKind.Transport ? "Merchants" : c.Kind == CommandKind.TransportReturn ? "Merchants returning" : "Returning home";
-                    body.Add(Line($"{what}: arrives {Clock(c.ArriveTime)} (in {Real(world, Math.Max(0, c.ArriveTime - world.Now))})"));
+                    var line = Element("link-line");
+                    line.Add(Live(() => $"{what}: arrives {Clock(c.ArriveTime)} (in {Real(world, Math.Max(0, c.ArriveTime - world.Now))})", "row-info", "link-text"));
+                    body.Add(line);
                 }
             }
 
@@ -170,12 +202,14 @@ namespace MedievalWorldConquest
         }
 
         /// <summary>The player's own village: its real troops, stores and buildings.</summary>
-        void ShowOwnVillage(Village v)
+        void ShowOwnVillage(World world, Village v)
         {
             body.Add(Text("Troops at home", "heading"));
             body.Add(TroopIcons(v.Troops));
             body.Add(Text("Resources", "heading"));
-            body.Add(Line($"Wood {Math.Floor(v.Wood):N0} · clay {Math.Floor(v.Clay):N0} · iron {Math.Floor(v.Iron):N0} (holds {v.StorageCapacity:N0})"));
+            var stores = Element("link-line");
+            stores.Add(Live(() => $"Wood {Math.Floor(v.Stock(ResourceType.Wood)):N0} · clay {Math.Floor(v.Stock(ResourceType.Clay)):N0} · iron {Math.Floor(v.Stock(ResourceType.Iron)):N0} (holds {v.StorageCapacity:N0})", "row-info", "link-text"));
+            body.Add(stores);
             body.Add(Text("Buildings", "heading"));
             body.Add(Line(BuildingSummary(v.Levels)));
         }
@@ -277,11 +311,15 @@ namespace MedievalWorldConquest
             var villages = new List<Village>(world.VillagesOf(p.Id));
             int points = 0;
             foreach (var v in villages) points += v.Points;
-            string now = $"{villages.Count}|{points}|{world.PlayerVillage?.Id}|{(int)(world.Now / 60)}|{p.TribeId}|{world.HumanPlayer?.TribeId}|{world.HumanPlayer?.Invited.Count}";
-            if (now == signature) return;
+            string now = $"{villages.Count}|{points}|{world.PlayerVillage?.Id}|{world.IsProtected(p.Id)}|{p.TribeId}|{world.HumanPlayer?.TribeId}|{world.HumanPlayer?.Invited.Count}";
+            if (now == signature)
+            {
+                RefreshLive();
+                return;
+            }
             signature = now;
             SetText(title, p.IsHuman ? $"{p.Name} (you)" : p.Name);
-            body.Clear();
+            Clear();
 
             // Their tribe, and what the player can do about it.
             if (world.Diplomacy)
@@ -308,7 +346,7 @@ namespace MedievalWorldConquest
                     $"  ·  {points:N0} points  ·  {villages.Count} village{(villages.Count == 1 ? "" : "s")}"));
             else body.Add(Line(p.Quit ? "Has given up: their villages went barbarian." : "No villages left."));
             if (world.IsProtected(p.Id))
-                body.Add(Text($"Under beginner protection for {Real(world, p.ProtectedUntil - world.Now)}.", "row-info", "protection-note"));
+                body.Add(Live(() => $"Under beginner protection for {Real(world, Math.Max(0, p.ProtectedUntil - world.Now))}.", "row-info", "protection-note"));
 
             body.Add(Text("Villages", "heading"));
             var home = world.PlayerVillage;
@@ -330,32 +368,117 @@ namespace MedievalWorldConquest
 
     /// <summary>
     /// One troop movement as a line: what it is, the village it's from or bound for (a link), its owner (a link),
-    /// and when it arrives. Updated in place every frame.
+    /// and when it arrives. Click the line to see what's in it (the player's own troops, or what their merchants
+    /// carry; what's coming at the player stays unknown until it lands). Updated in place every frame.
     /// </summary>
     public class MovementRow
     {
+        /// <summary>The movements whose contents are showing, by command id (not saved).</summary>
+        static readonly HashSet<int> Expanded = new HashSet<int>();
+
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => Expanded.Clear();
+
         public VisualElement Root { get; }
         public int CommandId { get; private set; }
-        readonly Label kind, time;
+        readonly VisualElement line, details, speedIcon;
+        AttackSpeed? speedShown;
+        readonly Label caret, kind, time, when;
         readonly Button village, player;
         readonly Label target;
         int villageId = -1, playerId = -1, targetId = -1;
+        /// <summary>What the details show (the command and whether they're open), to rebuild them only when it changes.</summary>
+        string detailsShown;
 
         public MovementRow(UiLinks links)
         {
-            Root = Element("movement-row");
+            Root = Element("movement-item");
+            line = Element("movement-row");
+            line.tooltip = "Click to see what's in it";
+            caret = Text("▸", "movement-caret");
+            line.Add(caret);
+            // An incoming attack's speed as a unit icon: all the player can tell about it before it lands.
+            speedIcon = Icons.Element(Icons.Unit(UnitType.Axeman), 18, "attack-speed-icon");
+            speedIcon.pickingMode = PickingMode.Position;
+            line.Add(speedIcon);
             kind = Text("", "movement-kind");
-            Root.Add(kind);
+            line.Add(kind);
             village = Link("", () => { if (villageId >= 0) links.OpenVillage(villageId); });
-            Root.Add(village);
+            line.Add(village);
             player = Link("", () => { if (playerId >= 0) links.OpenPlayer(playerId); }, "link--owner");
-            Root.Add(player);
+            line.Add(player);
             target = Text("", "row-info", "movement-target");
             target.RegisterCallback<ClickEvent>(_ => { if (targetId >= 0) links.OpenVillage(targetId); });
-            Root.Add(target);
-            Root.Add(Element("spacer"));
+            line.Add(target);
+            line.Add(Element("spacer"));
+            when = Text("", "row-level", "movement-when");
+            line.Add(when);
             time = Text("", "row-title", "movement-countdown");
-            Root.Add(time);
+            line.Add(time);
+            // A click anywhere on the line but its links opens or closes the details.
+            line.RegisterCallback<ClickEvent>(e =>
+            {
+                var hit = e.target as VisualElement;
+                if (hit == target || hit is Button || hit?.parent is Button) return;
+                if (!Expanded.Remove(CommandId)) Expanded.Add(CommandId);
+            });
+            Root.Add(line);
+            details = Element("movement-details");
+            Root.Add(details);
+        }
+
+        /// <summary>The troops (or goods) in a movement, as icons and counts.</summary>
+        void ShowDetails(World world, Command c, bool incoming)
+        {
+            details.Clear();
+            if (incoming)
+            {
+                details.Add(Text("You can't tell what's in it until it arrives. Scouts only see what's at home.", "row-info"));
+                return;
+            }
+            if (c.IsTrade)
+            {
+                if (c.Kind == CommandKind.TransportReturn)
+                {
+                    details.Add(Text($"{c.Merchants:N0} merchants on their way home, empty.", "row-info"));
+                    return;
+                }
+                details.Add(Text($"{c.Merchants:N0} merchants carrying", "row-info"));
+                AddGoods(c.Loot);
+                return;
+            }
+            bool any = false;
+            foreach (var type in Units.InDisplayOrder)
+            {
+                int n = c.Troops != null && (int)type < c.Troops.Length ? c.Troops[(int)type] : 0;
+                if (n <= 0) continue;
+                any = true;
+                var chip = Element("movement-unit");
+                chip.tooltip = Units.Get(type).Name;
+                chip.Add(Icons.Element(Icons.Unit(type), 18, "cost-icon"));
+                chip.Add(Text($"{n:N0}", "cost-value"));
+                details.Add(chip);
+            }
+            if (!any) details.Add(Text("No troops.", "row-info"));
+            if (c.Kind == CommandKind.Return && c.Loot.Wood + c.Loot.Clay + c.Loot.Iron > 0)
+            {
+                details.Add(Text("  carrying", "row-info"));
+                AddGoods(c.Loot);
+            }
+        }
+
+        void AddGoods(Cost goods)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                var r = (ResourceType)i;
+                int amount = goods.Get(r);
+                if (amount <= 0) continue;
+                var chip = Element("movement-unit");
+                chip.Add(Icons.Element(Icons.Resource(r), 18, "cost-icon"));
+                chip.Add(Text($"{amount:N0}", "cost-value"));
+                details.Add(chip);
+            }
         }
 
         public void Update(World world, Command c)
@@ -371,7 +494,8 @@ namespace MedievalWorldConquest
             bool back = c.Kind == CommandKind.Return || c.Kind == CommandKind.TransportReturn;
             var shown = incoming || back ? from : to;
             SetText(kind, incoming
-                ? (c.Kind == CommandKind.Attack ? "Incoming attack from" : c.Kind == CommandKind.Transport ? "Merchants coming from" : "Troops coming from")
+                ? (c.Kind == CommandKind.Attack ? "Incoming attack from" : c.Kind == CommandKind.Transport ? "Merchants coming from"
+                    : c.Kind == CommandKind.Support ? "Support coming from" : "Troops coming from")
                 : c.Kind switch
                 {
                     CommandKind.Attack => "Attack on",
@@ -393,9 +517,36 @@ namespace MedievalWorldConquest
             bool several = human != null && world.VillagesOf(human.Id).Count > 1;
             Show(target, several && own != null);
             if (several && own != null) SetText(target, incoming || back ? $"→ {own.Name}" : $"from {own.Name}");
+            // When it gets there (for troops coming home: when they're back), as a countdown and on the clock; the
+            // player's own attacks also say roughly when the survivors will be home again.
             SetText(time, Real(world, Math.Max(0, c.ArriveTime - world.Now)));
-            Root.EnableInClassList("movement-row--incoming", incoming && c.Kind == CommandKind.Attack);
-            Root.EnableInClassList("movement-row--return", back || c.IsTrade);
+            SetText(when, World.FormatClock(c.ArriveTime) +
+                          (!incoming && c.Kind == CommandKind.Attack ? $"  ·  back about {World.FormatClock(c.ArriveTime + (c.ArriveTime - c.DepartTime))}" : ""));
+            line.EnableInClassList("movement-row--incoming", incoming && c.Kind == CommandKind.Attack);
+            line.EnableInClassList("movement-row--return", back || c.IsTrade);
+            bool attackOnUs = incoming && c.Kind == CommandKind.Attack;
+            Show(speedIcon, attackOnUs);
+            AttackSpeed? speed = attackOnUs ? AttackSpeeds.Of(c.Troops) : (AttackSpeed?)null;
+            if (speed != speedShown)
+            {
+                speedShown = speed;
+                if (speed.HasValue)
+                {
+                    speedIcon.style.backgroundImage = new StyleBackground(Icons.Unit(AttackSpeeds.Icon(speed.Value)));
+                    speedIcon.tooltip = AttackSpeeds.Describe(speed.Value);
+                }
+            }
+            line.EnableInClassList("movement-row--danger", speed.HasValue && AttackSpeeds.IsDangerous(speed.Value));
+
+            bool open = Expanded.Contains(c.Id);
+            SetText(caret, open ? "▾" : "▸");
+            Show(details, open);
+            string shownNow = open ? $"{c.Id}" : "";
+            if (shownNow != detailsShown)
+            {
+                detailsShown = shownNow;
+                if (open) ShowDetails(world, c, incoming);
+            }
         }
     }
 }

@@ -8,16 +8,19 @@ namespace MedievalWorldConquest
 {
     // -------------------------------------------------------------------- smithy
 
-    /// <summary>The smithy: its research queue, and every unit that needs researching with its cost or what it still needs.</summary>
+    /// <summary>
+    /// The smithy: its research queue (a slot for each research it can hold), and every unit that needs researching
+    /// with its cost or what it still needs; one being researched shows its time left and progress on its own row.
+    /// </summary>
     class SmithyView
     {
         public VisualElement Root { get; }
         readonly MedievalWorldConquestGame game;
         readonly Label effect;
         readonly UpgradeBox upgrade;
-        readonly VisualElement queue;
-        readonly Dictionary<UnitType, (Label state, CostLine cost, Button research, Label reason)> rows =
-            new Dictionary<UnitType, (Label, CostLine, Button, Label)>();
+        readonly QueueSlots queue;
+        readonly Dictionary<UnitType, (Label state, VisualElement bar, VisualElement fill, CostLine cost, Button research, Label reason)> rows =
+            new Dictionary<UnitType, (Label, VisualElement, VisualElement, CostLine, Button, Label)>();
 
         public SmithyView(MedievalWorldConquestGame game)
         {
@@ -29,8 +32,8 @@ namespace MedievalWorldConquest
             Root.Add(upgrade.Root);
 
             Root.Add(Text("Researching", "heading"));
-            queue = Element("queue-list");
-            Root.Add(queue);
+            queue = new QueueSlots(World.MaxResearchQueue, "Cancel (full refund)");
+            Root.Add(queue.Root);
 
             Root.Add(Text("Research", "heading"));
             Root.Add(Text("Spearmen need no research, and noblemen come from the academy. Every other unit is researched here once; after that the village can train as many as it likes.", "row-info"));
@@ -46,6 +49,11 @@ namespace MedievalWorldConquest
                 names.Add(Text(u.Name, "row-title"));
                 var state = Text("", "row-level");
                 names.Add(state);
+                // Progress while it's being researched (shown on the unit, as well as in the queue above).
+                var bar = Element("progress", "research-progress");
+                var fill = Element("progress-fill");
+                bar.Add(fill);
+                names.Add(bar);
                 header.Add(names);
                 left.Add(header);
                 row.Add(left);
@@ -58,7 +66,7 @@ namespace MedievalWorldConquest
                 var reason = Text("", "row-reason");
                 box.Add(reason);
                 row.Add(box);
-                rows[type] = (state, cost, research, reason);
+                rows[type] = (state, bar, fill, cost, research, reason);
                 Root.Add(row);
             }
         }
@@ -73,17 +81,25 @@ namespace MedievalWorldConquest
 
             foreach (var pair in rows)
             {
-                var (state, cost, research, reason) = pair.Value;
+                var (state, bar, fill, cost, research, reason) = pair.Value;
                 var check = world.CheckResearch(v, pair.Key);
                 bool done = check.Status == ResearchStatus.AlreadyResearched;
-                SetText(state, done ? "researched" : check.Status == ResearchStatus.InProgress ? "being researched" : "not researched");
-                Show(cost.Root, !done && check.Status != ResearchStatus.InProgress);
-                Show(research, !done && check.Status != ResearchStatus.InProgress);
+                bool inProgress = check.Status == ResearchStatus.InProgress;
+                var order = inProgress ? v.Researching.Find(o => o.Unit == pair.Key) : null;
+                SetText(state, done ? "researched"
+                    : order == null ? "not researched"
+                    : order.Started ? $"researching · {Real(world, Math.Max(0, order.FinishTime - world.Now))} left"
+                    : $"waiting in the queue · takes {Real(world, order.Seconds)}");
+                Show(bar, order != null);
+                if (order != null)
+                    fill.style.width = Length.Percent(order.Started ? (float)(100 * (1 - Math.Max(0, order.FinishTime - world.Now) / order.Seconds)) : 0f);
+                Show(cost.Root, !done && !inProgress);
+                Show(research, !done && !inProgress);
                 cost.Set(world, check.Cost, check.Seconds);
                 research.SetEnabled(check.Status == ResearchStatus.Ok);
                 SetText(reason, check.Status switch
                 {
-                    ResearchStatus.NeedsBuilding => $"Needs {Buildings.Get(check.Required.Building).Name} level {check.Required.Level}.",
+                    ResearchStatus.NeedsBuilding => BuildingText.Needs(Units.Get(pair.Key).ResearchRequires, v),
                     ResearchStatus.QueueFull => $"The smithy's queue is full ({World.MaxResearchQueue} at a time).",
                     ResearchStatus.NotEnoughResources => double.IsInfinity(check.AffordableIn)
                         ? "Costs more than your warehouse holds."
@@ -95,44 +111,22 @@ namespace MedievalWorldConquest
 
         void RefreshQueue(World world, Village v)
         {
-            string signature = string.Join(",", v.Researching.ConvertAll(o => o.Id.ToString()));
-            if ((string)queue.userData != signature)
+            for (int i = 0; i < queue.Count; i++)
             {
-                queue.userData = signature;
-                queue.Clear();
-                if (v.Researching.Count == 0) queue.Add(Text("Nothing being researched.", "row-info"));
-                foreach (var order in v.Researching)
+                if (i >= v.Researching.Count)
                 {
-                    int id = order.Id;
-                    var item = Element("queue-item", "recruit-item");
-                    var line = Element("row-header");
-                    line.Add(Text(Units.Get(order.Unit).Name, "row-title"));
-                    line.Add(Text("", "row-level"));
-                    item.Add(line);
-                    var bar = Element("progress");
-                    bar.Add(Element("progress-fill"));
-                    item.Add(bar);
-                    item.Add(ButtonWith("Cancel (full refund)", () => game.CancelResearch(id), "btn", "btn--small", "cancel-btn"));
-                    queue.Add(item);
+                    queue.SetFree(i, i == 0 ? "Nothing being researched. Choose a unit below." : "Free slot");
+                    continue;
                 }
-            }
-
-            for (int i = 0; i < v.Researching.Count && i < queue.childCount; i++)
-            {
                 var order = v.Researching[i];
-                var time = (Label)queue[i][0][1];
-                var fill = queue[i].Q<VisualElement>(className: "progress-fill");
+                int id = order.Id;
+                string name = Units.Get(order.Unit).Name;
                 if (order.Started)
                 {
                     double left = Math.Max(0, order.FinishTime - world.Now);
-                    SetText(time, Real(world, left));
-                    fill.style.width = Length.Percent((float)(100 * (1 - left / order.Seconds)));
+                    queue.SetUsed(i, name, Real(world, left), 1 - left / order.Seconds, () => game.CancelResearch(id));
                 }
-                else
-                {
-                    SetText(time, $"waiting · {Real(world, order.Seconds)}");
-                    fill.style.width = Length.Percent(0);
-                }
+                else queue.SetUsed(i, name, $"waiting · {Real(world, order.Seconds)}", 0, () => game.CancelResearch(id));
             }
         }
     }

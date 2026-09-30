@@ -464,6 +464,27 @@
     flex-shrink: 0;
 }
 
+/* Slimmer slots where a screen has several queues (the Recruit screen). */
+.queue-slot--compact {
+    height: 36px;
+    margin-bottom: 3px;
+    padding: 2px 8px;
+}
+
+.queue-slot--compact .progress {
+    height: 6px;
+}
+
+.queue-slot--compact .queue-cancel {
+    height: 22px;
+}
+
+/* A unit's research progress on its own row in the smithy. */
+.research-progress {
+    width: 180px;
+    margin-top: 3px;
+}
+
 .queue-slot--empty {
     background-color: rgba(255, 255, 255, 0.12);
 }
@@ -1047,6 +1068,25 @@
 
 .send-available {
     width: 90px;
+}
+
+/* How many of a unit to send: a box to type in, then "(how many are home)" to send them all, and "none". */
+.send-amount {
+    width: 100px;
+    margin: 0 8px 0 0;
+}
+
+.send-all {
+    min-width: 70px;
+    margin-right: 10px;
+}
+
+.send-none {
+    margin-right: 10px;
+}
+
+.send-plus {
+    margin-right: 4px;
 }
 
 .catapult-target {
@@ -1647,11 +1687,96 @@
 
 .movement-countdown {
     font-size: 13px;
-    margin-left: 10px;
+    margin-left: 8px;
+}
+
+/* An incoming attack's speed, as the icon of its slowest possible unit. */
+.attack-speed-icon {
+    margin-right: 5px;
+}
+
+/* Rams, catapults or noblemen coming: danger (or a fake). */
+.movement-row--danger {
+    background-color: rgba(200, 60, 40, 0.4);
+    border-left-color: rgb(140, 20, 10);
+}
+
+/* The Tribe page's list of tribe mates' villages under attack. */
+.under-attack {
+    margin-bottom: 6px;
+}
+
+.under-attack-row {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 3px 6px;
+    border-top-width: 1px;
+    border-left-width: 4px;
+    border-color: rgba(122, 90, 51, 0.25);
+    border-left-color: rgb(170, 45, 30);
+}
+
+.under-attack-row > * {
+    margin-right: 6px;
+}
+
+.under-attack-row--danger {
+    background-color: rgba(200, 60, 40, 0.25);
+    border-left-color: rgb(140, 20, 10);
+}
+
+.under-attack-when {
+    white-space: nowrap;
+}
+
+.under-attack-reach {
+    color: rgb(60, 110, 40);
+    -unity-font-style: bold;
+    white-space: nowrap;
+}
+
+.under-attack-reach--no {
+    color: rgb(130, 108, 80);
+    -unity-font-style: normal;
+}
+
+/* When a movement arrives on the clock (and when an attack's survivors should be back). */
+.movement-when {
+    margin-left: 12px;
+    white-space: nowrap;
 }
 
 .movement-row--incoming .movement-countdown {
     color: rgb(150, 30, 20);
+}
+
+/* A movement's line and, once clicked, what's in it underneath. */
+.movement-item {
+    flex-shrink: 0;
+}
+
+.movement-caret {
+    font-size: 12px;
+    width: 12px;
+    margin: 0 2px 0 0;
+    color: rgb(110, 84, 54);
+}
+
+.movement-details {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 2px 6px 4px 20px;
+    border-left-width: 4px;
+    border-color: rgba(122, 90, 51, 0.25);
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+.movement-unit {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 10px;
 }
 .send-icon {
     margin-right: 6px;
@@ -1720,28 +1845,94 @@
     overflow: hidden;
 }
 
+/* Number columns: centered under their icons, with room between them. */
 .overview-number {
-    width: 78px;
+    width: 84px;
     flex-shrink: 0;
-    -unity-text-align: middle-right;
-    padding-right: 6px;
+    -unity-text-align: middle-center;
+    padding: 0 3px;
+}
+
+/* The population column ("used/limit") is the widest. */
+.overview-farm {
+    width: 116px;
 }
 
 .overview-icon-cell {
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
 }
 
+/* Construction takes the room left over: the building and level, and under it the time left and queue. */
 .overview-building {
-    width: 170px;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 200px;
+    padding-left: 12px;
+}
+
+.overview-subline {
+    font-size: 11px;
+    color: rgb(110, 84, 54);
+}
+
+/* A village's line in the overview: one height in both modes (room for construction's two lines). */
+.overview-line {
+    height: 42px;
     flex-shrink: 0;
-    padding-left: 10px;
+}
+
+/* A mode's own columns (production or troops), between the points and the incoming attacks. */
+.overview-group {
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 1;
+}
+
+/* The troops mode: a fixed column for each kind of unit, so the counts line up from village to village. */
+.overview-unit-col {
+    width: 52px;
+    flex-shrink: 0;
+    -unity-text-align: middle-center;
+}
+
+.overview-unit-col.overview-icon-cell {
+    align-items: center;
+}
+
+/* No units of that kind at home: a faint 0. */
+.overview-zero {
+    color: rgba(58, 42, 24, 0.3);
 }
 
 .overview-troops {
     flex-grow: 1;
     flex-shrink: 1;
     padding-left: 6px;
+}
+
+/* The troops at home: unit icons with counts, wrapping onto a second line if there are many kinds. */
+.overview-troop-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.overview-unit {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 8px;
+}
+
+.overview-unit > .cost-icon {
+    margin-right: 2px;
+}
+
+/* Headings get the rows' cell style; keep their own weight and color. */
+.ranking-header > .overview-cell {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
 }
 
 .overview-incoming {

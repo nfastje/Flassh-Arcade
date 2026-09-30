@@ -85,7 +85,7 @@ namespace MedievalWorldConquest
         public bool MapTabActive => hud.style.display == DisplayStyle.Flex && currentView == View.Map;
 
         /// <summary>The building whose screen is open, to highlight it in the village.</summary>
-        public BuildingType? SelectedBuilding => buildingWindow.Building;
+        public BuildingType? SelectedBuilding => buildingWindow.Highlight;
 
         /// <summary>Closes any building screen (e.g. when switching villages).</summary>
         public void SelectBuilding(BuildingType? type)
@@ -307,6 +307,7 @@ namespace MedievalWorldConquest
                 PlayerName = nameField.value,
                 GoldCoins = chosenCoins,
                 Diplomacy = chosenDiplomacy,
+                ConquestGoal = WorldSettings.StandardGoal,
             };
             Show(newWorldScreen, false);
             game.StartNewWorld(settings, newWorldSlot);
@@ -597,6 +598,13 @@ namespace MedievalWorldConquest
             buildingWindow.Open(type);
         }
 
+        /// <summary>Opens the Recruit screen (the barracks, stable and workshop together) in the village view.</summary>
+        public void OpenRecruit()
+        {
+            ShowView(View.Village);
+            buildingWindow.OpenRecruitAll();
+        }
+
         public void ShowGame(World world)
         {
             Show(startScreen, false);
@@ -682,18 +690,15 @@ namespace MedievalWorldConquest
         readonly List<MovementRow> movementRows = new List<MovementRow>();
 
         /// <summary>
-        /// What the village view's movement list tracks, soonest first: attacks coming in, and the player's own
-        /// attacks going out and troops coming home (support and the rest are at the rally point).
+        /// What the village view's movement list tracks, soonest first: every troop movement to or from the
+        /// player's villages (attacks and support coming in, the player's own attacks and support going out, troops
+        /// coming home). Merchants are at the market and the rally point.
         /// </summary>
         static List<Command> TrackedMovements(World world)
         {
             var human = world.HumanPlayer;
             if (human == null) return new List<Command>();
-            var list = world.IncomingAttacks(human.Id);
-            foreach (var c in world.CommandsOf(human.Id))
-                if (c.Kind == CommandKind.Attack || c.Kind == CommandKind.Return) list.Add(c);
-            list.Sort((a, b) => a.ArriveTime.CompareTo(b.ArriveTime));
-            return list;
+            return world.MovementsFor(human.Id).FindAll(c => !c.IsTrade);
         }
 
         /// <summary>One row per movement, with links to the villages and players involved; rows are reused.</summary>
