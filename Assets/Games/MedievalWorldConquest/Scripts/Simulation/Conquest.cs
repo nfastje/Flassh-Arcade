@@ -51,7 +51,8 @@ namespace MedievalWorldConquest.Simulation
 
         /// <summary>
         /// A lord gives up: it stops playing, and its villages go barbarian, keeping their buildings and whatever
-        /// troops were at home (in Tribal Wars, the only barbarians with troops are villages their players left).
+        /// troops were at home (in Tribal Wars, the only barbarians with troops are villages their players left), and
+        /// their names.
         /// </summary>
         public void QuitLord(Player lord)
         {
@@ -62,7 +63,6 @@ namespace MedievalWorldConquest.Simulation
             {
                 Touch(v);
                 SetOwner(v, -1);
-                v.Name = BarbarianName;
                 v.Queue.Clear();
                 v.Recruitment.Clear();
                 v.AwayPopulation = 0;
@@ -126,7 +126,8 @@ namespace MedievalWorldConquest.Simulation
             if (!wasBarbarian) AddStat(oldOwner, StatKind.VillagesLost, 1);
             SetOwner(target, command.OwnerId);
             target.Loyalty = LoyaltyAfterConquest;
-            if (wasBarbarian) target.Name = NewPlaceName(new Random(Settings.Seed ^ command.Id));
+            // A plain barbarian village gets a proper name; one a player left keeps the name it had.
+            if (wasBarbarian && target.Name == BarbarianName) target.Name = NewPlaceName(new Random(Settings.Seed ^ command.Id));
             target.Queue.Clear();
             target.Recruitment.Clear();
             // A village its old owner handed over: their troops had already left for their nearest other village.

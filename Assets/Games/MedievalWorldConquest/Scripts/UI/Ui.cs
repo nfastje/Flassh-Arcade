@@ -4,6 +4,26 @@ using UnityEngine.UIElements;
 
 namespace MedievalWorldConquest
 {
+    /// <summary>
+    /// A tooltip with troops in it, shown as unit icons with their counts: put one in an element's
+    /// <c>userData</c> (and keep a plain <c>tooltip</c> as well, which marks it as having one).
+    /// </summary>
+    public class TroopTip
+    {
+        public string Title, Note;
+        public int[] Troops;
+
+        public string Key
+        {
+            get
+            {
+                var key = new System.Text.StringBuilder(Title).Append('|').Append(Note).Append('|');
+                if (Troops != null) foreach (int n in Troops) key.Append(n).Append(',');
+                return key.ToString();
+            }
+        }
+    }
+
     /// <summary>Small helpers shared by the game's UI Toolkit screens.</summary>
     static class Ui
     {

@@ -25,15 +25,28 @@ namespace MedievalWorldConquest
             }, "btn"));
             Button sound = null;
             sound = ButtonWith(game.SoundOn ? "Sound: On" : "Sound: Off", () => sound.text = game.ToggleSound() ? "Sound: On" : "Sound: Off", "btn");
-            // (Only once there are sounds to switch: see GameAudio.)
+            // (Only once there are sounds, or music, to switch: see GameAudio.)
             if (game.HasSounds) panel.Add(sound);
+            Button music = null;
+            music = ButtonWith(game.MusicOn ? "Music: On" : "Music: Off", () => music.text = game.ToggleMusic() ? "Music: On" : "Music: Off", "btn");
+            if (game.HasMusic) panel.Add(music);
+            // Tips can be switched off; the quests are always there.
+            tipsButton = ButtonWith("", () => tipsButton.text = game.ToggleTips() ? "Tips: On" : "Tips: Off", "btn");
+            panel.Add(tipsButton);
             panel.Add(ButtonWith("Main Menu", () => game.LeaveToArcade(), "btn"));
             menu.Add(panel);
             root.Add(menu);
             Show(menu, false);
         }
 
-        public void ToggleMenu() => Show(menu, !MenuOpen);
+        Button tipsButton;
+
+        public void ToggleMenu()
+        {
+            // (Tips can also be switched off from a tip itself.)
+            tipsButton.text = game.TipsOn ? "Tips: On" : "Tips: Off";
+            Show(menu, !MenuOpen);
+        }
 
         void BuildConfirm()
         {
@@ -121,10 +134,10 @@ namespace MedievalWorldConquest
             bool alone = world.HumanShare >= world.Settings.ConquestGoal || tribe == null;
             ShowEndScreen("VICTORY", alone
                 ? $"You rule {world.HumanVillages().Count:N0} of the {world.GoalVillageCount:N0} {world.GoalVillagesLabel} ({world.HumanShare:P0}), " +
-                  $"past the {world.Settings.ConquestGoal:P0} you needed. The realm is yours!\nYou can keep playing this world as long as you like."
+                  $"past the {world.Settings.ConquestGoal:P0} you needed. The realm is yours!\nResume to carry on: the world goes on as before."
                 : $"{tribe.Name} [{tribe.Tag}] and its allies hold {world.BlocShare(tribe):P0} of the {world.GoalVillagesLabel}, past the {world.Settings.ConquestGoal:P0} " +
-                  "needed. The realm is yours, and your allies', together!\nYou can keep playing this world as long as you like.",
-                "Keep Playing", null, "Main Menu", () => game.LeaveToArcade());
+                  "needed. The realm is yours, and your allies', together!\nResume to carry on: the world goes on as before.",
+                "Resume", null, "Main Menu", () => game.LeaveToArcade());
             ShowStandings(world, alone ? null : tribe);
         }
 
@@ -187,7 +200,7 @@ namespace MedievalWorldConquest
         {
             var winner = world.FindTribe(world.WinningTribeId);
             ShowEndScreen("THE WORLD HAS ENDED", $"A side held {world.Settings.ConquestGoal:P0} of the {world.GoalVillagesLabel} for {World.HoldDays:0} days. Here are the winning tribes.\n" +
-                "You can keep playing this world as long as you like.", "Keep Playing", null, "Main Menu", () => game.LeaveToArcade());
+                "Resume to carry on: the world goes on as before.", "Resume", null, "Main Menu", () => game.LeaveToArcade());
             ShowStandings(world, winner);
         }
 
@@ -196,6 +209,39 @@ namespace MedievalWorldConquest
             "Your last village has fallen. But a lord is more than their lands: start again with a new village on the " +
             "frontier of the realm, under fresh beginner protection.",
             "Rebuild on the Frontier", () => game.RespawnPlayer(), "Main Menu", () => game.LeaveToArcade());
+
+        // ---------------------------------------------------------------- tips
+
+        VisualElement tipBanner;
+        Label tipText;
+
+        /// <summary>A tip: a banner under the top bar until the player has read it.</summary>
+        void BuildTip()
+        {
+            var layer = Element("tip-layer");
+            layer.pickingMode = PickingMode.Ignore;
+            tipBanner = Element("tip-banner");
+            tipBanner.Add(Text("Tip", "tip-title"));
+            tipText = Text("", "tip-text");
+            tipBanner.Add(tipText);
+            var row = Element("option-row", "tip-actions");
+            row.Add(ButtonWith("Got it", HideTip, "btn", "btn--small"));
+            row.Add(Link("Turn tips off", () => game.ToggleTips(), "tip-off"));
+            tipBanner.Add(row);
+            layer.Add(tipBanner);
+            hud.Add(layer);
+            Show(tipBanner, false);
+        }
+
+        public bool TipShowing => tipBanner.style.display == DisplayStyle.Flex;
+
+        public void ShowTip(string text)
+        {
+            tipText.text = text;
+            Show(tipBanner, true);
+        }
+
+        public void HideTip() => Show(tipBanner, false);
 
         void BuildToast()
         {

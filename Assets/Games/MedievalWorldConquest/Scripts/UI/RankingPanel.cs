@@ -15,6 +15,8 @@ namespace MedievalWorldConquest
     public class RankingPanel
     {
         const int PageSize = 50;
+        /// <summary>Real seconds between refreshes: points change all the time, and a list that reshuffles every second is hard to read.</summary>
+        const float RefreshSeconds = 5f;
 
         public VisualElement Root { get; }
 
@@ -23,11 +25,26 @@ namespace MedievalWorldConquest
         readonly Label summary, pageLabel;
         readonly Button first, previous, next, showPlayers, showTribes, showStats;
         readonly VisualElement pager, header;
+        readonly Label headerName, headerMembers, headerBloc;
         readonly StatsPanel stats;
+        readonly VisualElement column;
         /// <summary>On diplomacy worlds: the tribes' ranking rather than the players'; or the statistics.</summary>
         bool tribesShown, statsShown;
-        string signature;
         float nextRefresh;
+        // The rows are made once and filled in place on each refresh (rebuilding hundreds of elements every few
+        // seconds made the tab slow): a page's worth for the players, and as many as there have been tribes.
+        readonly VisualElement playerRows, tribeRows;
+        readonly List<RankRow> players = new List<RankRow>();
+        readonly List<RankRow> tribes = new List<RankRow>();
+
+        /// <summary>One line of the ranking, reused for whoever's at that place now.</summary>
+        class RankRow
+        {
+            public VisualElement Root, Swatch;
+            public Label Rank, Note, Members, Bloc, Villages, Points;
+            public Button Name, Tag;
+            public int Id = -1, TribeId = -1;
+        }
         int pageStart;
         /// <summary>A player to mark and bring into view (from their profile), or -1.</summary>
         int focusId = -1;
@@ -37,7 +54,7 @@ namespace MedievalWorldConquest
         {
             this.links = links;
             Root = Element("army", "ranking");
-            var column = Element("ranking-column");
+            column = Element("ranking-column");
             column.Add(Text("Ranking", "heading"));
 
             // Players, tribes (on diplomacy worlds) or statistics: right under the heading, so they never move.
@@ -67,15 +84,40 @@ namespace MedievalWorldConquest
 
             header = Element("ranking-row", "ranking-header");
             header.Add(Text("#", "ranking-rank"));
-            header.Add(Text("Lord", "ranking-name"));
+            headerName = Text("Lord", "ranking-name");
+            header.Add(headerName);
+            // The tribes' own columns: members, and the share their side holds with its allies.
+            headerMembers = Text("Members", "ranking-number", "ranking-narrow");
+            header.Add(headerMembers);
+            headerBloc = Text("With allies", "ranking-number");
+            headerBloc.tooltip = "The share of the goal's villages the tribe holds together with its allies";
+            header.Add(headerBloc);
             header.Add(Text("Villages", "ranking-number"));
             header.Add(Text("Points", "ranking-number"));
             column.Add(header);
 
-            list = new ScrollView(ScrollViewMode.Vertical);
+            // The scrollbar is always there, and the header leaves the same room on its right, so every heading
+            // sits over its column.
+            list = new ScrollView(ScrollViewMode.Vertical) { verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible };
             list.AddToClassList("ranking-list");
+            list.verticalScroller.RegisterCallback<GeometryChangedEvent>(_ =>
+            {
+                float bar = list.verticalScroller.layout.width;
+                if (!float.IsNaN(bar) && Math.Abs(header.resolvedStyle.paddingRight - (8 + bar)) > 0.5f) header.style.paddingRight = 8 + bar;
+            });
+            playerRows = Element();
+            tribeRows = Element();
+            list.Add(playerRows);
+            list.Add(tribeRows);
+            for (int i = 0; i < PageSize; i++)
+            {
+                var row = NewRow(true);
+                players.Add(row);
+                playerRows.Add(row.Root);
+            }
             column.Add(list);
             stats = new StatsPanel(links);
+            stats.Changed += Redraw;
             column.Add(stats.Root);
             Root.Add(column);
 
@@ -92,32 +134,28 @@ namespace MedievalWorldConquest
             tribes.Sort((a, b) => strength[b.Id].points.CompareTo(strength[a.Id].points));
             var mine = world.TribeOf(world.HumanPlayer);
 
-            var now = new System.Text.StringBuilder("tribes|");
-            foreach (var t in tribes) now.Append(t.Id).Append(':').Append(strength[t.Id].points).Append(':').Append(t.Members.Count).Append(',');
-            string key = now.ToString();
-            if (key == signature) return;
-            signature = key;
-
-            list.Clear();
-            for (int i = 0; i < tribes.Count; i++)
+            while (this.tribes.Count < tribes.Count)
             {
-                var t = tribes[i];
-                var row = Element("ranking-row");
-                row.EnableInClassList("ranking-row--you", t == mine);
-                row.Add(Text($"{i + 1:N0}", "ranking-rank"));
-                var name = Element("ranking-name");
-                var swatch = Element("legend-swatch");
-                swatch.style.backgroundColor = t == mine ? MapView.TribeMateColor : MapView.TribeColor(t);
-                name.Add(swatch);
-                int id = t.Id;
-                name.Add(Link($"[{t.Tag}] {t.Name}", () => links.OpenTribe(id), "ranking-link"));
-                name.Add(Text($"{t.Members.Count} members  ·  with allies {world.BlocShare(t):P1}", "row-level"));
-                row.Add(name);
-                row.Add(Text($"{strength[t.Id].villages:N0}", "ranking-number"));
-                row.Add(Text($"{strength[t.Id].points:N0}", "ranking-number"));
-                list.Add(row);
+                var row = NewRow(false);
+                this.tribes.Add(row);
+                tribeRows.Add(row.Root);
             }
-            SetText(summary, tribes.Count == 0 ? "No tribes have formed yet."
+            for (int i = 0; i < this.tribes.Count; i++)
+            {
+                var row = this.tribes[i];
+                Show(row.Root, i < tribes.Count);
+                if (i >= tribes.Count) continue;
+                var t = tribes[i];
+                row.Id = t.Id;
+                row.Root.EnableInClassList("ranking-row--you", t == mine);
+                SetText(row.Rank, $"{i + 1:N0}");
+                row.Swatch.style.backgroundColor = t == mine ? MapView.TribeMateColor : MapView.TribeColor(t);
+                SetText(row.Name, $"[{t.Tag}] {t.Name}");
+                SetText(row.Members, $"{t.Members.Count:N0}");
+                SetText(row.Bloc, $"{world.BlocShare(t):P1}");
+                SetText(row.Villages, $"{strength[t.Id].villages:N0}");
+                SetText(row.Points, $"{strength[t.Id].points:N0}");
+            }            SetText(summary, tribes.Count == 0 ? "No tribes have formed yet."
                 : $"{tribes.Count:N0} tribes. A tribe and up to two allies holding {world.Settings.ConquestGoal:P0} of the {world.GoalVillagesLabel} for {World.HoldDays:0} days win." +
                   (mine != null ? $" Your side holds {world.BlocShare(mine):P1}." : "") + (world.HoldTribeId != -1 ? " " + HoldStatus(world) : ""));
         }
@@ -146,18 +184,52 @@ namespace MedievalWorldConquest
             Redraw();
         }
 
-        /// <summary>Rebuilds on the next refresh, whatever changed.</summary>
-        void Redraw()
+        /// <summary>Refreshes at once (after a click), rather than at the next tick.</summary>
+        void Redraw() => nextRefresh = 0;
+
+        /// <summary>An empty row: a player's (name, tribe tag, a note if fallen) or a tribe's (name, members).</summary>
+        RankRow NewRow(bool player)
         {
-            signature = null;
-            nextRefresh = 0;
+            var row = new RankRow { Root = Element("ranking-row") };
+            row.Rank = Text("", "ranking-rank");
+            row.Root.Add(row.Rank);
+            var name = Element("ranking-name");
+            row.Swatch = Element("legend-swatch");
+            name.Add(row.Swatch);
+            row.Name = Link("", () =>
+            {
+                if (row.Id < 0) return;
+                if (player) links.OpenPlayer(row.Id);
+                else links.OpenTribe(row.Id);
+            }, "ranking-link");
+            name.Add(row.Name);
+            if (player)
+            {
+                row.Tag = Link("", () => { if (row.TribeId >= 0) links.OpenTribe(row.TribeId); });
+                name.Add(row.Tag);
+                row.Note = Text("(fallen)", "row-reason");
+                name.Add(row.Note);
+            }
+            row.Root.Add(name);
+            if (!player)
+            {
+                row.Members = Text("", "ranking-number", "ranking-narrow");
+                row.Root.Add(row.Members);
+                row.Bloc = Text("", "ranking-number");
+                row.Root.Add(row.Bloc);
+            }
+            row.Villages = Text("", "ranking-number");
+            row.Root.Add(row.Villages);
+            row.Points = Text("", "ranking-number");
+            row.Root.Add(row.Points);
+            return row;
         }
 
         public void Refresh(World world)
         {
             // Hundreds of lords' points change all the time: once a second is plenty.
             if (UnityEngine.Time.unscaledTime < nextRefresh) return;
-            nextRefresh = UnityEngine.Time.unscaledTime + 1f;
+            nextRefresh = UnityEngine.Time.unscaledTime + RefreshSeconds;
             Show(showTribes, world.Diplomacy);
             if (!world.Diplomacy) tribesShown = false;
             showPlayers.EnableInClassList("option--selected", !tribesShown && !statsShown);
@@ -167,12 +239,20 @@ namespace MedievalWorldConquest
             Show(header, !statsShown);
             Show(list, !statsShown);
             Show(stats.Root, statsShown);
+            // The statistics' three columns take the screen's width.
+            column.EnableInClassList("ranking-column--wide", statsShown);
             if (statsShown)
             {
                 SetText(summary, "The realm's statistics, as they stand.");
                 stats.Refresh(world);
                 return;
             }
+            Show(playerRows, !tribesShown);
+            Show(tribeRows, tribesShown);
+            SetText(headerName, tribesShown ? "Tribe" : "Lord");
+            Show(headerMembers, tribesShown);
+            Show(headerBloc, tribesShown);
+            column.EnableInClassList("ranking-column--tribes", tribesShown);
             if (tribesShown)
             {
                 RefreshTribes(world);
@@ -196,45 +276,29 @@ namespace MedievalWorldConquest
             previous.SetEnabled(pageStart > 0);
             next.SetEnabled(end < rankings.Count);
 
-            // Rebuild only when something on this page changes.
-            var now = new System.Text.StringBuilder().Append(pageStart).Append('|').Append(focusId).Append('|');
-            for (int i = pageStart; i < end; i++)
-                now.Append(rankings[i].Player.Id).Append(':').Append(rankings[i].Points).Append(':').Append(rankings[i].Villages).Append(',');
-            string key = now.ToString();
-            if (key == signature) return;
-            signature = key;
-
-            list.Clear();
-            for (int i = pageStart; i < end; i++)
+            for (int k = 0; k < PageSize; k++)
             {
+                var row = players[k];
+                int i = pageStart + k;
+                Show(row.Root, i < end);
+                if (i >= end) continue;
                 var r = rankings[i];
-                var row = Element("ranking-row");
-                row.EnableInClassList("ranking-row--you", r.Player.IsHuman);
-                row.EnableInClassList("ranking-row--focus", r.Player.Id == focusId && !r.Player.IsHuman);
-
-                row.Add(Text($"{i + 1:N0}", "ranking-rank"));
-                var name = Element("ranking-name");
-                var swatch = Element("legend-swatch");
-                swatch.style.backgroundColor = r.Player.IsHuman
+                row.Id = r.Player.Id;
+                row.Root.EnableInClassList("ranking-row--you", r.Player.IsHuman);
+                row.Root.EnableInClassList("ranking-row--focus", r.Player.Id == focusId && !r.Player.IsHuman);
+                SetText(row.Rank, $"{i + 1:N0}");
+                row.Swatch.style.backgroundColor = r.Player.IsHuman
                     ? MapView.PlayerColor
                     : MapView.RivalColors[r.Player.ColorIndex % MapView.RivalColors.Length];
-                name.Add(swatch);
-                // The name opens the lord's profile.
-                int id = r.Player.Id;
-                name.Add(Link(r.Player.IsHuman ? $"{r.Player.Name} (you)" : r.Player.Name, () => links.OpenPlayer(id), "ranking-link"));
+                SetText(row.Name, r.Player.IsHuman ? $"{r.Player.Name} (you)" : r.Player.Name);
                 var tribe = world.TribeOf(r.Player);
-                if (tribe != null)
-                {
-                    int tid = tribe.Id;
-                    name.Add(Link($"[{tribe.Tag}]", () => links.OpenTribe(tid)));
-                }
-                if (r.Villages == 0) name.Add(Text("(fallen)", "row-reason"));
-                row.Add(name);
-                row.Add(Text($"{r.Villages:N0}", "ranking-number"));
-                row.Add(Text($"{r.Points:N0}", "ranking-number"));
-                list.Add(row);
+                row.TribeId = tribe?.Id ?? -1;
+                Show(row.Tag, tribe != null);
+                if (tribe != null) SetText(row.Tag, $"[{tribe.Tag}]");
+                Show(row.Note, r.Villages == 0);
+                SetText(row.Villages, $"{r.Villages:N0}");
+                SetText(row.Points, $"{r.Points:N0}");
             }
-
             int own = world.HumanVillages().Count;
             string goal = $"You hold {own:N0} of the {world.GoalVillageCount:N0} {world.GoalVillagesLabel} ({world.HumanShare:P1}). " +
                           $"Win by holding {world.Settings.ConquestGoal:P0} of them (barbarian villages {(World.GoalOverAllVillages ? "included" : "don't count")})" +

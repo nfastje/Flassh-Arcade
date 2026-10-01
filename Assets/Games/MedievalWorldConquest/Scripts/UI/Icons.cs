@@ -47,6 +47,8 @@ namespace MedievalWorldConquest
         public static Texture2D Messages => Get("messages", DrawLetter);
         public static Texture2D Villages => Get("villages", DrawHouses);
         public static Texture2D Village => Get("village", DrawHouse);
+        public static Texture2D Ledger => Get("ledger", DrawLedger);
+        public static Texture2D Loot => Get("loot", DrawSack);
         public static Texture2D Tribe => Get("tribe", DrawBanner);
         public static Texture2D Unit(UnitType type) => Get("unit" + (int)type, p => DrawUnit(p, type));
 
@@ -179,6 +181,32 @@ namespace MedievalWorldConquest
             p.Rect(14, 20, 18, 28, Bark);
             p.Rect(9, 18, 12, 21, Parchment);
             p.Rect(20, 18, 23, 21, Parchment);
+        }
+
+        static void DrawLedger(Painter p)
+        {
+            // An open ledger with ruled pages: the Account Manager.
+            p.Rect(3, 7, 15.5f, 26, Parchment);
+            p.Rect(16.5f, 7, 29, 26, Parchment);
+            p.Rect(15.5f, 6, 16.5f, 27, Bark);
+            for (int y = 11; y <= 22; y += 4)
+            {
+                p.Line(5, y, 13.5f, y, 1f, Ink);
+                p.Line(18.5f, y, 27, y, 1f, Ink);
+            }
+        }
+
+        static void DrawSack(Painter p)
+        {
+            // A bulging sack of plunder, tied at the neck: the Loot Assistant.
+            var burlap = new Color(0.76f, 0.6f, 0.38f);
+            p.Ellipse(16, 20, 11, 9, burlap);
+            p.Quad(11, 13, 21, 13, 19, 7, 13, 7, burlap);
+            p.Triangle(10, 5, 16, 8, 13, 9, burlap);
+            p.Triangle(22, 5, 16, 8, 19, 9, burlap);
+            p.Rect(12, 10, 20, 12, Bark);                       // the cord
+            p.Circle(16, 21, 3.5f, Gold);                       // a coin showing on its side
+            p.Circle(16, 21, 2f, DarkGold);
         }
 
         static void DrawLetter(Painter p)

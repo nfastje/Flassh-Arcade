@@ -18,6 +18,9 @@ namespace MedievalWorldConquest
         public TimeMode TimeMode;
         public bool GoldCoins, Diplomacy, Won, Lost;
         public long SavedAtUtcTicks;
+        /// <summary>The player's statistics in this world (by <see cref="StatKind"/>, all time), and real seconds played in it.</summary>
+        public long[] Stats;
+        public double PlayedSeconds;
 
         public static SaveSummary Of(World world, DateTime savedAtUtc)
         {
@@ -41,7 +44,90 @@ namespace MedievalWorldConquest
                 Won = world.Won,
                 Lost = world.LostToBloc,
                 SavedAtUtcTicks = savedAtUtc.Ticks,
+                Stats = human?.Stats != null ? (long[])human.Stats.Clone() : new long[World.StatKinds],
+                PlayedSeconds = world.PlayedSeconds,
             };
+        }
+    }
+
+    /// <summary>
+    /// The player's lifetime record across every world they've played: what's kept from worlds they've deleted,
+    /// plus (when shown) their worlds still saved. Kept in its own file, so deleting a world doesn't lose it.
+    /// </summary>
+    [Serializable]
+    public class PlayerRecord
+    {
+        /// <summary>Worlds deleted (and so kept only here), and of those, how many the player won or saw won by others.</summary>
+        public int WorldsDeleted, WorldsWon, WorldsLost;
+        /// <summary>The best rank reached and the most villages held (as last saved), in any world (0: none yet).</summary>
+        public int BestRank, MostVillages;
+        public long[] Stats = new long[World.StatKinds];
+        public double PlayedSeconds;
+        /// <summary>Worlds played in all (only when shown: deleted ones plus those still saved).</summary>
+        [NonSerialized] public int WorldsPlayed;
+
+        /// <summary>Keeps a world's figures before it's deleted.</summary>
+        public void Bank(SaveSummary s)
+        {
+            WorldsDeleted++;
+            Add(s);
+        }
+
+        void Add(SaveSummary s)
+        {
+            if (s.Won) WorldsWon++;
+            if (s.Lost) WorldsLost++;
+            if (s.Rank > 0 && (BestRank == 0 || s.Rank < BestRank)) BestRank = s.Rank;
+            MostVillages = Math.Max(MostVillages, s.Villages);
+            if (Stats == null || Stats.Length != World.StatKinds) Stats = new long[World.StatKinds];
+            for (int i = 0; s.Stats != null && i < s.Stats.Length && i < Stats.Length; i++) Stats[i] += s.Stats[i];
+            PlayedSeconds += s.PlayedSeconds;
+        }
+
+        /// <summary>The whole record: what's kept, plus the worlds still saved.</summary>
+        public static PlayerRecord Lifetime(PlayerRecord kept, SaveSummary[] saved)
+        {
+            var all = JsonUtility.FromJson<PlayerRecord>(JsonUtility.ToJson(kept));
+            all.WorldsPlayed = kept.WorldsDeleted;
+            foreach (var s in saved)
+                if (s != null)
+                {
+                    all.Add(s);
+                    all.WorldsPlayed++;
+                }
+            return all;
+        }
+    }
+
+    /// <summary>Reads and writes the player's lifetime record.</summary>
+    static class ProfileFile
+    {
+        static string Path => System.IO.Path.Combine(Application.persistentDataPath, "MedievalWorldConquest", "profile.json");
+
+        public static PlayerRecord Load()
+        {
+            try
+            {
+                if (File.Exists(Path)) return JsonUtility.FromJson<PlayerRecord>(File.ReadAllText(Path)) ?? new PlayerRecord();
+            }
+            catch (Exception e) when (e is ArgumentException || e is IOException || e is UnauthorizedAccessException)
+            {
+                Debug.LogWarning($"Medieval World Conquest: couldn't read the player's record: {e.Message}");
+            }
+            return new PlayerRecord();
+        }
+
+        public static void Save(PlayerRecord record)
+        {
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path));
+                File.WriteAllText(Path, JsonUtility.ToJson(record));
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                Debug.LogWarning($"Medieval World Conquest: couldn't save the player's record: {e.Message}");
+            }
         }
     }
 

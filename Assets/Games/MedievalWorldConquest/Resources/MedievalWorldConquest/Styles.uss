@@ -731,6 +731,171 @@
     background-color: rgb(140, 60, 40);
 }
 
+/* The quest box at the top of the village pane. */
+/* The quest: a bar (the quest and its progress, Claim when done) that unfolds to the goal, why, and reward. */
+.quest-header {
+    flex-direction: row;
+    align-items: center;
+}
+
+.quest-header:hover {
+    background-color: rgb(208, 177, 124);
+}
+
+.quest-caret {
+    width: 14px;
+    font-size: 13px;
+    color: rgb(60, 36, 14);
+    margin: 0;
+    padding: 0;
+}
+
+.quest-heading {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.quest-title {
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(60, 36, 14);
+    white-space: normal;
+    margin: 0;
+    padding: 0;
+}
+
+.quest-progress {
+    font-size: 12px;
+    color: rgb(72, 44, 18);
+    white-space: normal;
+    margin: 0;
+    padding: 0;
+}
+
+.quest-progress--done {
+    color: rgb(40, 95, 25);
+    -unity-font-style: bold;
+}
+
+.quest-claim {
+    flex-shrink: 0;
+    margin: 0 0 0 4px;
+}
+
+.quest-body {
+    padding: 4px 8px 6px 8px;
+}
+
+.quest-body > * {
+    flex-shrink: 0;
+}
+
+.quest-goal {
+    white-space: normal;
+}
+
+.quest-why {
+    white-space: normal;
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+/* The reward wraps rather than overflowing when the amounts are big; nothing in it stretches or squeezes. */
+.quest-reward {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.quest-reward > * {
+    flex-shrink: 0;
+}
+
+.quest-reward-label {
+    font-size: 13px;
+    color: rgb(58, 42, 24);
+    margin-right: 6px;
+}
+
+.quest-amount {
+    font-size: 12px;
+    margin-right: 6px;
+}
+/* The new-world screen's warning about fast real-time worlds. */
+.speed-warning {
+    white-space: normal;
+    margin: 2px 0 4px 140px;
+    -unity-text-align: middle-left;
+}
+
+/* Pausing (worlds that stand still while closed): the button beside the clock, and the clock while paused. */
+.pause-btn {
+    margin: 0 8px 0 0;
+    min-width: 70px;
+}
+
+.clock--paused {
+    color: rgb(255, 200, 90);
+}
+
+/* A tip: a banner just under the top bar. */
+.tip-layer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 92px;
+    align-items: center;
+}
+
+.tip-banner {
+    width: 560px;
+    max-width: 70%;
+    background-color: rgb(252, 245, 228);
+    border-width: 2px;
+    border-left-width: 6px;
+    border-color: rgb(160, 126, 82);
+    border-left-color: rgb(70, 120, 170);
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+.tip-title {
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(70, 120, 170);
+}
+
+.tip-text {
+    font-size: 14px;
+    white-space: normal;
+    color: rgb(58, 42, 24);
+    margin: 2px 0 6px 0;
+}
+
+.tip-actions {
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.tip-off {
+    margin-left: 12px;
+}
+
+/* The player's lifetime record (from the start screen). */
+.record-panel {
+    width: 460px;
+}
+
+.record-body {
+    align-self: stretch;
+}
+
+.record-value {
+    width: 140px;
+}
+
 /* The new-world screen: one row per setting, all on one page. */
 .new-world-panel {
     align-items: stretch;
@@ -894,21 +1059,49 @@
     color: rgb(92, 52, 20);
 }
 
+/* Takes the room left over; a name too long for it is cut off rather than pushing into the numbers. */
 .ranking-name {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     flex-direction: row;
     align-items: center;
+    overflow: hidden;
+}
+
+.ranking-name > * {
+    flex-shrink: 0;
+}
+
+/* The tribes' table has two more columns (members, and the share with allies), so it's wider. */
+.ranking-column--tribes {
+    width: 820px;
+    max-width: 100%;
+}
+
+.ranking-narrow {
+    width: 80px;
 }
 
 .ranking-name .row-reason {
     margin-left: 8px;
 }
 
+/* Numbers and their headings alike: centered in a fixed width, with no stray margins, so each lines up. */
 .ranking-number {
     width: 100px;
+    flex-shrink: 0;
     font-size: 15px;
     color: rgb(58, 42, 24);
-    -unity-text-align: middle-right;
+    -unity-text-align: middle-center;
+    margin: 0;
+    padding: 0 4px;
+}
+
+.ranking-rank {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
 }
 
 /* Statistics (in the Ranking tab). */
@@ -923,6 +1116,37 @@
 .stats > .ranking-list {
     flex-shrink: 1;
     min-height: 0;
+}
+
+/* The statistics take the screen's width: resources, troops and villages in three columns side by side. */
+.ranking-column--wide {
+    width: 1180px;
+    max-width: 100%;
+}
+
+.stats-columns {
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.stats-column {
+    flex-grow: 1;
+    flex-basis: 0;
+    min-width: 0;
+    margin: 0 8px;
+}
+
+.stats-column .ranking-rank {
+    width: 34px;
+}
+
+.stats-column .ranking-number {
+    width: 80px;
+}
+
+.stats-column .ranking-name {
+    min-width: 0;
+    overflow: hidden;
 }
 
 .stats-heading {
@@ -1172,11 +1396,22 @@
     border-color: rgb(122, 90, 51);
 }
 
+/* Boxes and their lines keep their natural height: a long quest never squeezes the boxes below it. */
 .pane-box {
     background-color: rgb(250, 240, 214);
     border-width: 1px;
     border-color: rgb(160, 126, 82);
     margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.pane-box > * {
+    flex-shrink: 0;
+}
+
+/* The village pane's boxes scroll when they don't all fit. */
+.village-pane-scroll {
+    flex-grow: 1;
 }
 
 .pane-title {
@@ -1190,6 +1425,7 @@
 .pane-line {
     flex-direction: row;
     align-items: center;
+    flex-shrink: 0;
     padding: 3px 8px;
     border-bottom-width: 1px;
     border-color: rgba(160, 126, 82, 0.3);
@@ -1867,4 +2103,316 @@
 
 .map-color-btn {
     margin: 0 0 6px 0;
+}
+
+/* ---------------------------------------------------------------- the Account Manager */
+
+.manager-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom-width: 1px;
+    border-color: rgba(122, 90, 51, 0.25);
+}
+
+.manager-name {
+    width: 210px;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    overflow: hidden;
+}
+
+.manager-details {
+    flex-grow: 1;
+    flex-shrink: 1;
+    padding: 0 10px;
+}
+
+.manager-dropdown {
+    width: 170px;
+    flex-shrink: 0;
+    margin: 0 6px;
+}
+
+.manager-editor {
+    padding-bottom: 6px;
+}
+
+.manager-troop-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+}
+
+.manager-troop-cell {
+    flex-direction: row;
+    align-items: center;
+    margin: 3px 10px 3px 0;
+}
+
+.manager-actions {
+    justify-content: flex-start;
+    padding: 4px 8px;
+}
+
+.manager-create {
+    padding: 6px 8px;
+}
+
+.manager-step {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 8px;
+}
+
+.manager-step-number {
+    width: 30px;
+    flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------- the Loot Assistant */
+
+.loot-template {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 4px 8px;
+}
+
+.loot-letter {
+    width: 26px;
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+.loot-amount {
+    width: 60px;
+}
+
+.loot-carry {
+    margin: 0 10px 0 4px;
+}
+
+.loot-from {
+    padding: 2px 8px;
+}
+
+.loot-choice {
+    width: 36px;
+    height: 28px;
+    margin: 0 0 0 4px;
+    -unity-text-align: middle-center;
+}
+
+.loot-dot-cell {
+    width: 22px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+/* How the last raid went: green won cleanly, yellow won with losses, red beaten; hollow if never raided. */
+.loot-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: rgb(84, 52, 22);
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.loot-dot--clean {
+    background-color: rgb(70, 160, 60);
+}
+
+.loot-dot--losses {
+    background-color: rgb(230, 180, 40);
+}
+
+.loot-dot--defeat {
+    background-color: rgb(190, 40, 30);
+}
+
+.loot-full {
+    color: rgb(70, 140, 50);
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.loot-col {
+    width: 80px;
+    flex-shrink: 0;
+    -unity-text-align: middle-center;
+}
+
+.loot-col-wide {
+    width: 170px;
+    flex-shrink: 0;
+    -unity-text-align: middle-center;
+}
+
+.loot-col-narrow {
+    width: 50px;
+    flex-shrink: 0;
+    -unity-text-align: middle-center;
+}
+
+.loot-send {
+    width: 34px;
+    height: 26px;
+    margin: 0 3px 0 0;
+    padding: 0;
+    -unity-text-align: middle-center;
+}
+
+/* A raid is on its way to (or back from) this village: its buttons go gray. */
+.loot-send--sent,
+.loot-send--sent:hover {
+    background-color: rgb(178, 174, 166);
+    border-color: rgb(128, 124, 118);
+    color: rgb(92, 90, 86);
+}
+
+/* Can't send this one now: faded, but still hoverable for the reason why. */
+.loot-send--unable {
+    opacity: 0.45;
+}
+
+/* A cycle that stopped by itself: its button stands out until the player looks. */
+.loot-stopped {
+    border-color: rgb(190, 40, 30);
+    color: rgb(150, 30, 20);
+}
+
+/* The troop targets window: over the village list, beside the button that opened it. */
+.manager-popup {
+    position: absolute;
+    width: 470px;
+    background-color: rgb(250, 240, 214);
+    border-width: 2px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 6px;
+    padding-bottom: 4px;
+}
+
+.manager-popup-header {
+    flex-direction: row;
+    align-items: center;
+    background-color: rgb(196, 163, 108);
+    padding: 3px 4px 3px 8px;
+}
+
+.manager-popup-title {
+    flex-grow: 1;
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(60, 36, 14);
+}
+
+.manager-popup-close {
+    width: 26px;
+    height: 24px;
+    padding: 0;
+    margin: 0;
+    -unity-text-align: middle-center;
+}
+
+.manager-popup-hint {
+    white-space: normal;
+    padding: 4px 8px 0 8px;
+}
+
+/* The Loot Assistant's pinned bar (troops at home, raids left) above its scrolling list. */
+.loot-layout {
+    flex-direction: column;
+}
+
+.loot-scroll {
+    flex-grow: 1;
+}
+
+.loot-home-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    flex-shrink: 0;
+    background-color: rgb(250, 240, 214);
+    border-width: 1px;
+    border-color: rgb(160, 126, 82);
+    padding: 5px 10px;
+    margin-bottom: 4px;
+}
+
+.loot-home-title {
+    margin-right: 8px;
+}
+
+.loot-home-units {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    flex-grow: 1;
+}
+
+.loot-home-cell {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 12px;
+}
+
+.loot-home-count {
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(58, 42, 24);
+    margin-left: 3px;
+}
+
+.loot-raids-left {
+    margin-left: 12px;
+}
+
+/* Hover tooltips (drawn by the game: UI Toolkit shows none at runtime). */
+.ui-tooltip {
+    position: absolute;
+    max-width: 340px;
+    background-color: rgb(58, 42, 24);
+    border-width: 1px;
+    border-color: rgb(196, 163, 108);
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.ui-tooltip-text {
+    color: rgb(250, 238, 212);
+    font-size: 12px;
+    white-space: normal;
+    margin: 0;
+    padding: 0;
+}
+
+.ui-tooltip-note {
+    margin-top: 3px;
+    color: rgb(230, 205, 160);
+}
+
+/* A troop tip's units: icon and count, side by side, wrapping. */
+.ui-tooltip-troops {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 3px;
+}
+
+.ui-tooltip-unit {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.ui-tooltip-count {
+    color: rgb(250, 238, 212);
+    font-size: 14px;
+    -unity-font-style: bold;
+    margin-left: 3px;
 }

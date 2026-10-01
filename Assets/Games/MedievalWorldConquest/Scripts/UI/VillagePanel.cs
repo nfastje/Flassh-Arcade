@@ -25,6 +25,13 @@ namespace MedievalWorldConquest
         readonly Label[] production = new Label[3];
         readonly VisualElement unitList, protectionBox;
         readonly Label protection;
+        readonly VisualElement questBox;
+        readonly Label questTitle, questGoal, questWhy, questProgress;
+        readonly Label[] questReward = new Label[3];
+        readonly Button questClaim;
+        readonly Label questCaret;
+        readonly VisualElement questBody;
+        bool questOpen;
         string unitSignature;
 
         public VillagePanel(MedievalWorldConquestGame game, Camera cam)
@@ -51,9 +58,13 @@ namespace MedievalWorldConquest
             }
             Root.Add(badgeLayer);
 
-            // The pane on the right.
-            var pane = Element("village-pane");
-            pane.style.width = PaneWidth;
+            // The pane on the right. Its boxes keep their natural size (none is squeezed when another grows). If
+            // they don't all fit, the pane scrolls with the mouse wheel, without a scrollbar taking up its width.
+            var frame = Element("village-pane");
+            frame.style.width = PaneWidth;
+            var pane = new ScrollView(ScrollViewMode.Vertical) { verticalScrollerVisibility = ScrollerVisibility.Hidden };
+            pane.AddToClassList("village-pane-scroll");
+            frame.Add(pane);
 
             var productionBox = Box(pane, "Production");
             for (int i = 0; i < 3; i++)
@@ -75,11 +86,52 @@ namespace MedievalWorldConquest
             links.Add(ButtonWith("» rally point", () => game.OpenBuilding(BuildingType.RallyPoint), "pane-link"));
             unitsBox.Add(links);
 
+            // The quest line, folded to one bar: the quest and how far along it is (with Claim once it's done).
+            // Click the bar for the goal, why it matters, and the reward.
+            questBox = Element("pane-box", "quest-box");
+            var header = Element("pane-title", "quest-header");
+            questCaret = Text("▸", "quest-caret");
+            header.Add(questCaret);
+            var heading = Element("quest-heading");
+            questTitle = Text("", "quest-title");
+            heading.Add(questTitle);
+            questProgress = Text("", "quest-progress");
+            heading.Add(questProgress);
+            header.Add(heading);
+            questClaim = ButtonWith("Claim", () => game.ClaimQuest(), "btn", "btn--small", "quest-claim");
+            header.Add(questClaim);
+            header.RegisterCallback<ClickEvent>(e =>
+            {
+                var clicked = e.target as VisualElement;
+                if (clicked is Button || clicked?.GetFirstAncestorOfType<Button>() != null) return; // Claim
+                questOpen = !questOpen;
+                Show(questBody, questOpen);
+                SetText(questCaret, questOpen ? "▾" : "▸");
+            });
+            header.tooltip = "Click for the goal, why it matters, and the reward";
+            questBox.Add(header);
+            questBody = Element("quest-body");
+            questGoal = Text("", "row-info", "quest-goal");
+            questBody.Add(questGoal);
+            questWhy = Text("", "row-level", "quest-why");
+            questBody.Add(questWhy);
+            var reward = Element("quest-reward");
+            reward.Add(Text("Reward:", "quest-reward-label"));
+            for (int i = 0; i < 3; i++)
+            {
+                reward.Add(Icons.Element(Icons.Resource((ResourceType)i), 14, "pane-icon"));
+                questReward[i] = Text("", "quest-amount");
+                reward.Add(questReward[i]);
+            }
+            questBody.Add(reward);
+            questBox.Add(questBody);
+            Show(questBody, false);
+            pane.Add(questBox);
+
             protectionBox = Box(pane, "Beginner protection");
             protection = Text("", "row-info");
             protectionBox.Add(protection);
-
-            Root.Add(pane);
+            Root.Add(frame);
         }
 
         static VisualElement Box(VisualElement pane, string title)
@@ -97,6 +149,7 @@ namespace MedievalWorldConquest
                 SetText(production[i], $"{v.ProductionPerHour((ResourceType)i) * speed:N0} per hour");
 
             RefreshUnits(v);
+            RefreshQuest(world);
 
             var human = world.HumanPlayer;
             bool shielded = human != null && world.IsProtected(human.Id) && world.Players.Count > 1;
@@ -104,6 +157,24 @@ namespace MedievalWorldConquest
             if (shielded) SetText(protection, $"Nobody can attack you for another {Real(world, human.ProtectedUntil - world.Now)}.");
 
             RefreshBadges(world, v);
+        }
+
+        /// <summary>The current quest (the box goes once they're all done).</summary>
+        void RefreshQuest(World world)
+        {
+            var quest = world.CurrentQuest;
+            Show(questBox, quest != null);
+            if (quest == null) return;
+            SetText(questTitle, $"Quest: {quest.Title}");
+            SetText(questGoal, quest.Goal);
+            SetText(questWhy, quest.Why);
+            string progress = quest.ProgressIn(world);
+            SetText(questProgress, world.QuestReady ? "Done! Claim your reward." : progress ?? quest.Goal);
+            questProgress.EnableInClassList("quest-progress--done", world.QuestReady);
+            SetText(questReward[0], $"{quest.Reward.Wood:N0}");
+            SetText(questReward[1], $"{quest.Reward.Clay:N0}");
+            SetText(questReward[2], $"{quest.Reward.Iron:N0}");
+            Show(questClaim, world.QuestReady);
         }
 
         /// <summary>Only the units the village has at home, as in Tribal Wars ("657 Spear fighters").</summary>

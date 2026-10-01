@@ -53,6 +53,7 @@ namespace MedievalWorldConquest.Tests
             foreach (var p in world.Players) p.ProtectedUntil = 0;
             var noob = Lords(world).First(p => p.Personality == AiPersonality.Noob);
             var village = HomeOf(world, noob);
+            string name = village.Name;
             village.Troops[(int)UnitType.Spearman] = 5;
             var home = world.PlayerVillage;
             home.Levels[(int)BuildingType.Farm] = 20;
@@ -69,7 +70,7 @@ namespace MedievalWorldConquest.Tests
 
             Assert.IsTrue(noob.Quit);
             Assert.IsTrue(village.IsBarbarian);
-            Assert.AreEqual(World.BarbarianName, village.Name);
+            Assert.AreEqual(name, village.Name, "an abandoned village keeps its name");
             Assert.IsFalse(world.Rankings().Any(r => r.Player == noob), "quitters leave the rankings");
             Assert.IsTrue(world.Events.Pending.Any(e => e.Kind == EventKind.BarbarianGrowth && e.VillageId == village.Id), "and it grows like any barbarian village");
         }

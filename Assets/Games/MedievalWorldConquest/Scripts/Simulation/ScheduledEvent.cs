@@ -31,6 +31,8 @@ namespace MedievalWorldConquest.Simulation
         InactiveLeaves = 10,
         /// <summary>Twice a game day on a diplomacy world: tribes form, recruit, make pacts and war, and strain or break.</summary>
         TribeTick = 11,
+        /// <summary>Every quarter of a game hour: the Account Manager's round of the player's villages.</summary>
+        ManagerTick = 12,
     }
 
     /// <summary>

@@ -28,6 +28,11 @@ namespace MedievalWorldConquest
             viewButtons[View.Map] = IconButton(nav, Icons.Map, "Map", () => ShowView(currentView == View.Map ? View.Village : View.Map));
             viewButtons[View.Overview] = IconButton(nav, Icons.Villages, "Villages", () => ShowView(currentView == View.Overview ? View.Village : View.Overview));
             viewButtons[View.Overview].tooltip = "All your villages at a glance";
+            viewButtons[View.Manager] = IconButton(nav, Icons.Ledger, "Manager", () => ShowView(currentView == View.Manager ? View.Village : View.Manager));
+            viewButtons[View.Manager].tooltip = "The Account Manager: build templates and troop targets for your villages";
+            // The Loot Assistant, once the first raid quest has unlocked it.
+            viewButtons[View.Loot] = IconButton(nav, Icons.Loot, "Loot", () => ShowView(currentView == View.Loot ? View.Village : View.Loot));
+            viewButtons[View.Loot].tooltip = "The Loot Assistant: one-click raids, and a raid cycle that keeps going while you're away";
             // Reports: a scroll with a little red count of the unread ones.
             viewButtons[View.Reports] = IconButton(nav, Icons.Reports, "Reports", () => ShowView(currentView == View.Reports ? View.Village : View.Reports));
             unreadBadge = Text("", "unread-badge");
@@ -46,6 +51,10 @@ namespace MedievalWorldConquest
             nav.Add(playerName);
             clock = Text("", "clock");
             nav.Add(clock);
+            // (Only in worlds that stand still while the game is closed; P does the same.)
+            pauseButton = ButtonWith("Pause", () => game.TogglePause(), "btn", "btn--small", "pause-btn");
+            pauseButton.tooltip = "Pause the world (P)";
+            nav.Add(pauseButton);
             nav.Add(ButtonWith("Menu", ToggleMenu, "btn", "btn--small"));
             top.Add(nav);
 
@@ -138,6 +147,10 @@ namespace MedievalWorldConquest
                 ShowView(View.Village);
             });
             hud.Add(overviewPanel.Root);
+            managerPanel = new ManagerPanel(game, links, AskToConfirm);
+            hud.Add(managerPanel.Root);
+            lootPanel = new LootPanel(game, links);
+            hud.Add(lootPanel.Root);
             tribePanel = new TribePanel(game, links, AskToConfirm);
             hud.Add(tribePanel.Root);
             messagesPanel = new MessagesPanel(game, links);
@@ -197,6 +210,13 @@ namespace MedievalWorldConquest
         /// <summary>Whether the village, player or tribe window is showing.</summary>
         public bool InfoOpen => villageWindow.IsOpen || playerWindow.IsOpen || tribeWindow.IsOpen;
 
+        Button pauseButton;
+
+        /// <summary>Whether the player is typing in a text box (so keys like P are letters, not shortcuts).</summary>
+        public bool Typing => root.panel?.focusController?.focusedElement is VisualElement focused
+                              && (focused is TextField || focused is IntegerField || focused.GetFirstAncestorOfType<TextField>() != null
+                                  || focused.GetFirstAncestorOfType<IntegerField>() != null);
+
         /// <summary>Closes the village, player and tribe windows.</summary>
         public void CloseInfo()
         {
@@ -234,6 +254,8 @@ namespace MedievalWorldConquest
             Show(reportsPanel.Root, view == View.Reports);
             Show(rankingPanel.Root, view == View.Ranking);
             Show(overviewPanel.Root, view == View.Overview);
+            Show(managerPanel.Root, view == View.Manager);
+            Show(lootPanel.Root, view == View.Loot);
             Show(tribePanel.Root, view == View.Tribe);
             Show(messagesPanel.Root, view == View.Messages);
             if (view != View.Village) buildingWindow.Close();
@@ -266,6 +288,7 @@ namespace MedievalWorldConquest
         public void Refresh(World world)
         {
             lastWorld = world;
+            RefreshTooltip();
             var v = world.PlayerVillage;
             if (v == null) return;
             var own = world.HumanVillages();
@@ -279,8 +302,11 @@ namespace MedievalWorldConquest
             Show(previousVillage, own.Count > 1);
             Show(nextVillage, own.Count > 1);
             // The world's speed is in the clock's tooltip, to leave the bar's room for the names.
-            SetText(clock, World.FormatClock(world.Now));
+            SetText(clock, game.Paused ? $"{World.FormatClock(world.Now)}  ·  paused" : World.FormatClock(world.Now));
             clock.tooltip = $"World speed {SpeedText(world.Settings.Speed)}";
+            clock.EnableInClassList("clock--paused", game.Paused);
+            Show(pauseButton, game.CanPause);
+            SetText(pauseButton, game.Paused ? "Resume" : "Pause");
 
             int capacity = v.StorageCapacity;
             for (int i = 0; i < resourceValues.Length; i++)
@@ -313,6 +339,8 @@ namespace MedievalWorldConquest
             tribeWindow.Refresh(world);
             Show(viewButtons[View.Tribe], world.Diplomacy);
             Show(viewButtons[View.Messages], world.Diplomacy);
+            Show(viewButtons[View.Loot], world.LootAssistantUnlocked);
+            if (currentView == View.Loot && !world.LootAssistantUnlocked) ShowView(View.Village);
             int unreadMail = world.UnreadMessages;
             Show(unreadMessages, unreadMail > 0);
             SetText(unreadMessages, unreadMail > 99 ? "99+" : unreadMail.ToString());
@@ -326,6 +354,8 @@ namespace MedievalWorldConquest
             else if (currentView == View.Reports) reportsPanel.Refresh(world);
             else if (currentView == View.Ranking) rankingPanel.Refresh(world);
             else if (currentView == View.Overview) overviewPanel.Refresh(world);
+            else if (currentView == View.Manager) managerPanel.Refresh(world);
+            else if (currentView == View.Loot) lootPanel.Refresh(world);
             else if (currentView == View.Tribe) tribePanel.Refresh(world);
             else if (currentView == View.Messages) messagesPanel.Refresh(world);
             sendDialog.Refresh(world);

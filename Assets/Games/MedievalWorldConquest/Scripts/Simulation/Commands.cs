@@ -295,6 +295,8 @@ namespace MedievalWorldConquest.Simulation
             home.Wood = Math.Max(home.Wood, Math.Min(cap, home.Wood + command.Loot.Wood));
             home.Clay = Math.Max(home.Clay, Math.Min(cap, home.Clay + command.Loot.Clay));
             home.Iron = Math.Max(home.Iron, Math.Min(cap, home.Iron + command.Loot.Iron));
+            // Raiders home: the Loot Assistant's cycle sends them out again.
+            if (IsHuman(command.OwnerId)) RunCycle(home);
         }
 
         bool IsHuman(int playerId) => FindPlayer(playerId)?.IsHuman == true;
@@ -428,6 +430,7 @@ namespace MedievalWorldConquest.Simulation
                 report.Kind = ReportKind.Attack;
                 report.DefenderVisible = Total(survivors) > 0 || result.Scouted;
                 AddReport(report);
+                NoteRaid(command, target, report);
             }
             bool defenderHearsOfIt = IsHuman(defenderOwner);
             foreach (int owner in supportOwners)

@@ -59,7 +59,7 @@ namespace FlasshArcade
                 new Color(0.55f, 1f, 0.45f)),
             new ArcadeGame(
                 "Medieval World Conquest",
-                "Build a village, raise an army and conquer the realm. (Early development)",
+                "Build a village, raise an army and conquer the realm.",
                 "MedievalWorldConquest",
                 typeof(MedievalWorldConquest.MedievalWorldConquestGame),
                 new Color(0.9f, 0.72f, 0.4f)),

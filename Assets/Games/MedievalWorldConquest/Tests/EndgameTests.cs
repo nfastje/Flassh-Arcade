@@ -57,6 +57,40 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
+        public void TheHumanLeadingTheWinningSideCanBringInTheFactionsStrongest()
+        {
+            var world = World.CreateNew(new WorldSettings { Seed = 1234, Speed = 1f, RivalDensity = 1, Diplomacy = true, ProtectionDays = 0 });
+            var lords = world.Players.Where(p => !p.IsHuman && p.Personality != AiPersonality.Inactive && !p.Quit && world.VillagesOf(p.Id).Count > 0).ToArray();
+            var mine = world.FoundTribe(world.HumanPlayer, "Mine", "MI");
+            for (int i = 0; i < 4; i++) world.JoinTribe(lords[i], mine);
+            var theirs = world.FoundTribe(lords[4], "Theirs", "TH");
+            for (int i = 5; i < 8; i++) world.JoinTribe(lords[i], theirs);
+            // The human's tribe leads a faction; the other is its satellite.
+            world.FactionsFormed = true;
+            mine.FactionId = mine.Id;
+            theirs.FactionId = mine.Id;
+            // A strong lord in the satellite.
+            var strong = lords[5];
+            world.VillagesOf(strong.Id)[0].Levels[(int)BuildingType.Headquarters] = 25;
+
+            int max = World.MaxTribeMembers;
+            try
+            {
+                World.MaxTribeMembers = 5; // the human's tribe is full
+                Assert.IsTrue(world.SwapCandidates().Contains(strong), "stronger than the weakest member");
+                Assert.IsFalse(world.SwapCandidates().Contains(lords[4]), "a satellite's leader stays with it");
+                world.BringIntoTribe(strong);
+                Assert.AreEqual(mine.Id, strong.TribeId);
+                Assert.AreEqual(5, mine.Members.Count, "the weakest made way");
+                Assert.AreEqual(4, theirs.Members.Count, "and took the strong lord's place");
+            }
+            finally
+            {
+                World.MaxTribeMembers = max;
+            }
+        }
+
+        [Test]
         public void AHandedOverVillageDoesNotFight()
         {
             var world = World.CreateNew(new WorldSettings { Seed = 6, Speed = 1f, RivalDensity = 1, ProtectionDays = 0 });

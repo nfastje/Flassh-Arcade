@@ -43,6 +43,13 @@ namespace MedievalWorldConquest
             if (p != null && world.Expel(p)) ui.ShowToast($"{p.Name} is out of the tribe.");
         }
 
+        /// <summary>Brings a lord of the faction's other tribes into the player's tribe (their weakest member swapping out if it's full).</summary>
+        public void BringIntoTribe(int playerId)
+        {
+            if (world == null) return;
+            ui.ShowToast(world.BringIntoTribe(world.FindPlayer(playerId)), 4f);
+        }
+
         public void LeaveTribe()
         {
             if (world == null) return;

@@ -88,7 +88,8 @@ namespace MedievalWorldConquest.Simulation
             foreach (int id in t.Members)
             {
                 var m = FindPlayer(id);
-                if (m != null && !m.IsHuman) m.Satisfaction += (60 - m.Satisfaction) * 0.05 * days;
+                // (The human's standing recovers the same way: a bad patch isn't held against them forever.)
+                if (m != null) m.Satisfaction += (60 - m.Satisfaction) * 0.05 * days;
             }
 
             double perDay = (0.004 + 0.3 * Math.Pow(t.Tension / 100, 2)) * (winningSide ? 0.3 : 1);

@@ -92,7 +92,8 @@ namespace MedievalWorldConquest
             if (human == null) return;
             var tribe = world.TribeOf(human);
 
-            string now = TribeSignature(world, tribe) + "|" + human.AskedToJoinTribe + "|" + world.HoldTribeId + ":" + world.HoldSince;
+            string now = TribeSignature(world, tribe) + "|" + human.AskedToJoinTribe + "|" + world.HoldTribeId + ":" + world.HoldSince
+                         + "|" + string.Join(",", world.SwapCandidates().ConvertAll(p => p.Id.ToString()));
             if (now != signature)
             {
                 signature = now;
@@ -180,6 +181,33 @@ namespace MedievalWorldConquest
 
             // Tribe mates' villages under attack (the list keeps itself up to date).
             body.Add(underAttack.Root);
+
+            // Leading a tribe on the winning side of the endgame: the faction's lords who would strengthen it.
+            var candidates = world.SwapCandidates();
+            if (candidates.Count > 0)
+            {
+                body.Add(Text("Strengthen your tribe", "heading"));
+                bool room = World.HasRoom(tribe);
+                body.Add(Text(room
+                    ? "Your tribe stands with the side that can win the world. These lords of the tribes on your side would join you: bring them in while you have room."
+                    : "Your tribe stands with the side that can win the world. These lords of the tribes on your side are stronger than your weakest member: bring one in and your weakest takes their place in their tribe.", "row-info"));
+                foreach (var c in candidates)
+                {
+                    var row = Element("info-village-row");
+                    int id = c.Id;
+                    row.Add(Link(c.Name, () => links.OpenPlayer(id), "link--owner"));
+                    var theirs = world.TribeOf(c);
+                    if (theirs != null)
+                    {
+                        int tid = theirs.Id;
+                        row.Add(Link($"[{theirs.Tag}]", () => links.OpenTribe(tid)));
+                    }
+                    row.Add(Element("spacer"));
+                    row.Add(Text($"{world.PointsOf(c):N0} pts  ·  {world.VillagesOf(c.Id).Count} villages", "row-level"));
+                    row.Add(ButtonWith("Bring in", () => game.BringIntoTribe(id), "btn", "btn--small", "count-btn"));
+                    body.Add(row);
+                }
+            }
 
             // Members.
             body.Add(Text("Members", "heading"));

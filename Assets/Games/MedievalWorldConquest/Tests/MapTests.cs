@@ -124,7 +124,8 @@ namespace MedievalWorldConquest.Tests
             var world = NewWorld();
             world.AdvanceTo(world.Now + 5 * World.SecondsPerDay);
             var barbarians = world.Villages.Where(v => world.FindPlayer(v.OwnerId) == null).ToList();
-            Assert.IsTrue(barbarians.All(v => v.OwnerId == -1 && v.IsBarbarian && v.Name == World.BarbarianName));
+            // (Villages whose players left keep their names; the rest are plain barbarian villages.)
+            Assert.IsTrue(barbarians.All(v => v.OwnerId == -1 && v.IsBarbarian && !string.IsNullOrEmpty(v.Name)));
             Assert.AreEqual(world.Villages.Count, world.Villages.Select(v => v.Id).Distinct().Count());
         }
 

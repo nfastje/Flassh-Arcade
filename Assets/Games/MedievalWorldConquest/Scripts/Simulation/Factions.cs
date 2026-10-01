@@ -188,13 +188,13 @@ namespace MedievalWorldConquest.Simulation
 
         /// <summary>
         /// Tribes not yet in a faction (and new ones) pick one when their time comes: the one they stand best with,
-        /// strong and near. A tribe the human leads is asked instead; one that turned the offer down stays out.
+        /// strong and near. It all happens behind the scenes, the human's tribe included: the player only sees what
+        /// follows (wars, and villages and lords changing hands).
         /// </summary>
         void ChooseSides()
         {
             var cores = Cores();
             if (cores.Count == 0) return;
-            var human = HumanPlayer;
             foreach (var t in ActiveTribes())
             {
                 if (t.FactionId != -1) continue;
@@ -221,20 +221,8 @@ namespace MedievalWorldConquest.Simulation
                     }
                 }
                 if (best == null) continue;
-                if (IsHumanLed(t))
-                {
-                    t.FactionJoinAt = Now + 5 * SecondsPerDay; // asked again later if the offer lapses unanswered
-                    if (!Messages.Exists(m => m.Kind == MessageKind.FactionInvite && !m.Answered && Now - m.Time < 5 * SecondsPerDay))
-                        Write(MessageKind.FactionInvite, FindPlayer(best.LeaderId), $"{best.Name} [{best.Tag}] asks you to stand with them",
-                            Pick(20, $"The realm is choosing sides. Stand with {best.Name} and we'll finish this together; stand apart and you'll stand alone.",
-                                $"Every tribe worth the name has picked a side. Ours is the one that wins. Will {t.Name} ride with us?"), best.Id, tribeId: best.Id);
-                    continue;
-                }
                 t.FactionId = best.Id;
                 Log("chose a faction");
-                if (human != null && human.TribeId == t.Id)
-                    Write(MessageKind.Note, FindPlayer(t.LeaderId), $"We stand with {best.Name}",
-                        $"{t.Name} has sided with {best.Name} [{best.Tag}]. Their friends are ours, and so are their enemies.", tribeId: t.Id);
             }
         }
 
@@ -259,9 +247,9 @@ namespace MedievalWorldConquest.Simulation
             Tribe leader = null;
             foreach (var k in cores)
                 if (leader == null || share[k.Id] > share[leader.Id]) leader = k;
-            var human = HumanPlayer;
             foreach (var t in tribes)
             {
+                // (A tribe the human leads keeps the side it's on: that's for the player to change.)
                 if (t.FactionId < 0 || t.FactionId == leader.Id || t.FactionId == t.Id || IsHumanLed(t) || !share.TryGetValue(t.FactionId, out double own)) continue;
                 if (own >= 0.6 * share[leader.Id]) continue;
                 double perDay = OnCoreSide(t) ? 0.015 : 0.04;
@@ -270,9 +258,6 @@ namespace MedievalWorldConquest.Simulation
                 if (Relation(t, old) == RelationKind.Ally) SetRelation(t, old, RelationKind.Neutral);
                 t.FactionId = leader.Id;
                 Log("switched faction");
-                if (human != null && human.TribeId == t.Id)
-                    Write(MessageKind.Note, FindPlayer(t.LeaderId), $"We stand with {leader.Name} now",
-                        $"{old?.Name} is losing. {t.Name} has gone over to {leader.Name} [{leader.Tag}]: their enemies are ours now.", tribeId: t.Id);
             }
             foreach (var k in cores)
             {
@@ -370,6 +355,57 @@ namespace MedievalWorldConquest.Simulation
                 JoinTribe(best, t);
                 Log("fed a lord");
             }
+        }
+
+        /// <summary>
+        /// For a human leading a tribe on their faction's winning side (AI satellites don't move lords into a tribe
+        /// the player leads: that's the player's call): the faction's other lords who would make it stronger (any,
+        /// while it has room; otherwise those stronger than its weakest member), strongest first.
+        /// </summary>
+        public List<Player> SwapCandidates(int most = 10)
+        {
+            var found = new List<Player>();
+            var human = HumanPlayer;
+            var tribe = TribeOf(human);
+            if (!FactionsFormed || tribe == null || tribe.LeaderId != human.Id || !OnCoreSide(tribe)) return found;
+            var weakest = WeakestMember(tribe);
+            int floor = HasRoom(tribe) ? 0 : weakest != null ? PointsOf(weakest) : int.MaxValue;
+            foreach (var s in ActiveTribes())
+            {
+                if (s.FactionId != tribe.FactionId || !IsSatellite(s)) continue;
+                foreach (int id in s.Members)
+                {
+                    var m = FindPlayer(id);
+                    if (m == null || m.Quit || m.IsHuman || id == s.LeaderId || VillagesOf(id).Count == 0 || PointsOf(m) <= floor) continue;
+                    found.Add(m);
+                }
+            }
+            found.Sort((a, b) => PointsOf(b).CompareTo(PointsOf(a)));
+            if (found.Count > most) found.RemoveRange(most, found.Count - most);
+            return found;
+        }
+
+        /// <summary>
+        /// The human brings a faction lord into their tribe (one of <see cref="SwapCandidates"/>); if it's full, its
+        /// weakest member takes that lord's place in their tribe. Returns what happened, or why it didn't.
+        /// </summary>
+        public string BringIntoTribe(Player lord)
+        {
+            var tribe = TribeOf(HumanPlayer);
+            if (lord == null || tribe == null || !SwapCandidates(int.MaxValue).Contains(lord)) return "They can't join your tribe right now.";
+            var from = TribeOf(lord);
+            var weakest = HasRoom(tribe) ? null : WeakestMember(tribe);
+            LeaveTribe(lord);
+            if (weakest != null)
+            {
+                if (from != null && !from.Disbanded) JoinTribe(weakest, from);
+                else LeaveTribe(weakest);
+            }
+            JoinTribe(lord, tribe);
+            Log("fed a lord");
+            return weakest != null && from != null
+                ? $"{lord.Name} has joined {tribe.Name}; {weakest.Name} has gone to {from.Name} in their place."
+                : $"{lord.Name} has joined {tribe.Name}.";
         }
 
         /// <summary>A village's offer (to the lord it's offered to) is still standing.</summary>

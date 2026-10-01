@@ -479,11 +479,12 @@ namespace MedievalWorldConquest
 
         /// <summary>
         /// Half the width of the gate sprite for a wall tier, in world units: the ring leaves just this much room
-        /// for it. Tier 0 spans pixels 28-104 (with its palisade wings); the towered gates span 18-112.
+        /// for it. Every gate is symmetric about the sprite's middle (pixel 64): tier 0 spans pixels 26-102 (with its
+        /// palisade wings), tier 1 16-112 (its towers' roofs), tier 2 18-110.
         /// </summary>
-        public static float GateHalfWidth(int tier) => (tier == 0 ? (104 - 28) : (112 - 18)) / 2f / PixelsPerUnit;
+        public static float GateHalfWidth(int tier) => (tier == 0 ? 38 : tier == 1 ? 48 : 46) / PixelsPerUnit;
 
-        /// <summary>The wall's gate, which sits in the gap at the front of the palisade ring.</summary>
+        /// <summary>The wall's gate, which sits in the gap at the front of the palisade ring, centered on the sprite.</summary>
         static void DrawGate(Canvas c, int tier)
         {
             if (tier == 2)
@@ -492,11 +493,11 @@ namespace MedievalWorldConquest
                 foreach (int tx in new[] { 18, 92 })
                 {
                     c.Bricks(tx, Ground, tx + 18, 82, Stone);
-                    c.Crenellations(tx, tx + 18, 82, Stone);
+                    c.Crenellations(tx + 1, tx + 17, 82, Stone);
                     c.Rect(tx + 7, 58, tx + 11, 66, Doorway);
                 }
                 c.Bricks(34, Ground, 94, 66, Stone);
-                c.Crenellations(34, 94, 66, Stone);
+                c.Crenellations(36, 94, 66, Stone);
                 c.Arch(48, Ground, 80, 46, Doorway);
                 c.Planks(51, Ground, 77, 38, DarkWood);
                 return;
@@ -517,7 +518,7 @@ namespace MedievalWorldConquest
             if (tier == 0)
             {
                 // Short palisade wings either side, so the gate joins up with the ring of stakes.
-                for (int x = 28; x < 44; x += 5) c.Rect(x, Ground, x + 4, 44, Wood);
+                for (int x = 26; x < 40; x += 5) c.Rect(x, Ground, x + 4, 44, Wood);
                 for (int x = 88; x < 104; x += 5) c.Rect(x, Ground, x + 4, 44, Wood);
             }
 

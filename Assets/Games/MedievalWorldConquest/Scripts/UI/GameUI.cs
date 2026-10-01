@@ -22,7 +22,7 @@ namespace MedievalWorldConquest
         static readonly float[] Speeds = { 1f, 5f, 20f, 100f };
 
         /// <summary>What fills the screen below the top bar.</summary>
-        enum View { Village, Map, Reports, Ranking, Overview, Tribe, Messages }
+        enum View { Village, Map, Reports, Ranking, Overview, Tribe, Messages, Manager, Loot }
 
         readonly MedievalWorldConquestGame game;
         readonly VisualElement root;
@@ -32,6 +32,8 @@ namespace MedievalWorldConquest
         ReportsPanel reportsPanel;
         RankingPanel rankingPanel;
         OverviewPanel overviewPanel;
+        ManagerPanel managerPanel;
+        LootPanel lootPanel;
         TribePanel tribePanel;
         MessagesPanel messagesPanel;
         TribeWindow tribeWindow;
@@ -126,12 +128,14 @@ namespace MedievalWorldConquest
 
             BuildStartScreen();
             BuildHud();
+            BuildTip();
             sendDialog = new SendDialog(game);
             root.Add(sendDialog.Root);
             BuildMenu();
             BuildConfirm();
             BuildEndScreen();
             BuildToast();
+            BuildTooltips(); // last, so it's drawn over everything
         }
 
         // ---------------------------------------------------------------- helpers

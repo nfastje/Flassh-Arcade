@@ -32,7 +32,7 @@ namespace MedievalWorldConquest.Simulation
                 {
                     tribe.HelpCalls.Add(new HelpCall { VillageId = to.Id, OwnerId = victim.Id, AttackerId = c.OwnerId, ArriveTime = c.ArriveTime });
                     var human = HumanPlayer;
-                    if (human != null && human.TribeId == tribe.Id && !victim.IsHuman && speed == AttackSpeed.Nobleman
+                    if (human != null && !PlayerAway && human.TribeId == tribe.Id && !victim.IsHuman && speed == AttackSpeed.Nobleman
                         && HumanCanReach(to, c.ArriveTime) && SupportRequestsToday() < 4
                         && !Messages.Exists(m => m.Kind == MessageKind.SupportRequest && m.A == to.Id && Now - m.Time < 12 * 3600))
                         Write(MessageKind.SupportRequest, victim, $"Noblemen coming for {to.Name} ({to.X}|{to.Y})",

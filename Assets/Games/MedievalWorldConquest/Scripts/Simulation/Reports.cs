@@ -26,6 +26,8 @@ namespace MedievalWorldConquest.Simulation
         public double Time;
         public ReportKind Kind;
         public bool Read;
+        /// <summary>A raid cycle's raid that went without a hitch: filed as read, and the first to go when the list is full.</summary>
+        public bool Routine;
 
         public int AttackerVillageId, DefenderVillageId;
         public string AttackerVillage, DefenderVillage;
@@ -85,7 +87,13 @@ namespace MedievalWorldConquest.Simulation
             report.Id = NextReportId++;
             report.Time = Now;
             Reports.Add(report);
-            if (Reports.Count > MaxReports) Reports.RemoveRange(0, Reports.Count - MaxReports);
+            // Over the limit: the oldest routine raid goes first (an overnight raid cycle shouldn't push out a
+            // battle that matters), then the oldest of any kind.
+            while (Reports.Count > MaxReports)
+            {
+                int routine = Reports.FindIndex(r => r.Routine);
+                Reports.RemoveAt(routine >= 0 && routine < Reports.Count - 1 ? routine : 0);
+            }
         }
 
         public BattleReport FindReport(int id) => Reports.Find(r => r.Id == id);

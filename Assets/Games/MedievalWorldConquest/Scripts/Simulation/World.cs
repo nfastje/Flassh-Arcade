@@ -109,9 +109,10 @@ namespace MedievalWorldConquest.Simulation
         /// 17 added the gold-coin option for noblemen (older worlds keep the flat price);
         /// 18 added tribes, diplomacy and messages (an option for new worlds; older worlds stay free-for-all);
         /// 19 added the dominance ending (holding the goal), the world lock and how far each lord likes to spread;
-        /// 20 added the factions' endgame (villages handed over), noble trains and world statistics.
+        /// 20 added the factions' endgame (villages handed over), noble trains and world statistics;
+        /// 21 added quests, tips, time played, the Account Manager and the Loot Assistant.
         /// </summary>
-        public const int CurrentVersion = 20;
+        public const int CurrentVersion = 21;
 
         /// <summary>The longest name a village can be given.</summary>
         public const int MaxVillageNameLength = 32;
@@ -139,6 +140,13 @@ namespace MedievalWorldConquest.Simulation
         public WorldSettings Settings = new WorldSettings();
         /// <summary>Game time, in seconds since midnight before day 1.</summary>
         public double Now;
+        /// <summary>Real seconds the player has spent in this world (for their lifetime record).</summary>
+        public double PlayedSeconds;
+        /// <summary>
+        /// Set while the world catches up on time the game was closed (not saved): the player wasn't there, so
+        /// tribe mates don't ask them for help, and can't hold it against them.
+        /// </summary>
+        [NonSerialized] public bool PlayerAway;
         public List<Player> Players = new List<Player>();
         public List<Village> Villages = new List<Village>();
         public EventQueue Events = new EventQueue();
@@ -179,6 +187,7 @@ namespace MedievalWorldConquest.Simulation
             world.SettleStartingArea();
             world.ScheduleWorldGrowth();
             if (settings.Diplomacy) world.ScheduleTribeTick();
+            world.ScheduleManagerTick();
             return world;
         }
 
@@ -278,6 +287,18 @@ namespace MedievalWorldConquest.Simulation
             if (WorldStats == null || WorldStats.Length != StatKinds) WorldStats = Resized(WorldStats, StatKinds);
             if (WorldStatsDayStart == null || WorldStatsDayStart.Length != StatKinds) WorldStatsDayStart = Resized(WorldStatsDayStart, StatKinds);
             if (StatHistory == null) StatHistory = new List<DayStats>();
+            if (TipsShown == null) TipsShown = new List<int>();
+            // Version 21: the Account Manager (nothing managed yet, but its rounds start).
+            if (ManagedVillages == null) ManagedVillages = new List<ManagedVillage>();
+            if (CustomTemplates == null) CustomTemplates = new List<BuildTemplate>();
+            foreach (var m in ManagedVillages) m.TroopTargets = Resized(m.TroopTargets, Units.Count);
+            bool managing = false;
+            foreach (var e in Events.Pending) managing |= e.Kind == EventKind.ManagerTick;
+            if (!managing) ScheduleManagerTick();
+            // The Loot Assistant: unlocked for anyone already past the first raid quest.
+            if (LootTargets == null) LootTargets = new List<LootTarget>();
+            if (!LootAssistantUnlocked && QuestIndex > Array.FindIndex(QuestLine, q => q.Title == LootAssistantQuest)) UnlockLootAssistant();
+            if (LootAssistantUnlocked) EnsureLootTemplates();
             foreach (var p in Players) EnsureStats(p);
             // Every village has a rally point, as in Tribal Wars.
             if (savedVersion < 12)
@@ -479,6 +500,9 @@ namespace MedievalWorldConquest.Simulation
                     break;
                 case EventKind.TribeTick:
                     TribeTick(e);
+                    break;
+                case EventKind.ManagerTick:
+                    ManagerTick(e);
                     break;
             }
             EventApplied?.Invoke(e);

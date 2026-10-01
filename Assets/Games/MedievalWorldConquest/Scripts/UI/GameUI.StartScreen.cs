@@ -29,10 +29,58 @@ namespace MedievalWorldConquest
             panel.Add(slotRow);
             var buttons = Element("option-row");
             buttons.style.marginTop = 12;
+            buttons.Add(ButtonWith("Your Record", () => Show(recordScreen, true), "btn"));
             buttons.Add(ButtonWith("Main Menu", () => game.LeaveToArcade(), "btn"));
             panel.Add(buttons);
 
             BuildNewWorldScreen();
+            BuildRecordScreen();
+        }
+
+        VisualElement recordScreen, recordBody;
+
+        /// <summary>The player's lifetime record, over the start screen.</summary>
+        void BuildRecordScreen()
+        {
+            recordScreen = Element("screen", "centered", "dim");
+            root.Add(recordScreen);
+            var panel = Element("panel", "record-panel");
+            recordScreen.Add(panel);
+            panel.Add(Text("Your Record", "title"));
+            panel.Add(Text("Every world you've played, deleted ones included.", "subtitle"));
+            recordBody = Element("record-body");
+            panel.Add(recordBody);
+            var buttons = Element("option-row");
+            buttons.style.marginTop = 12;
+            buttons.Add(ButtonWith("Close", () => Show(recordScreen, false), "btn"));
+            panel.Add(buttons);
+            Show(recordScreen, false);
+        }
+
+        void ShowRecord(PlayerRecord r)
+        {
+            recordBody.Clear();
+            void Line(string what, string value)
+            {
+                var row = Element("ranking-row");
+                row.Add(Text(what, "ranking-name"));
+                row.Add(Text(value, "ranking-number", "record-value"));
+                recordBody.Add(row);
+            }
+            long Stat(StatKind k) => r.Stats != null && (int)k < r.Stats.Length ? r.Stats[(int)k] : 0;
+            var played = TimeSpan.FromSeconds(r.PlayedSeconds);
+            Line("Worlds played", $"{r.WorldsPlayed:N0}");
+            Line("Worlds won", $"{r.WorldsWon:N0}");
+            Line("Worlds won by a rival side", $"{r.WorldsLost:N0}");
+            Line("Time played", played.TotalHours >= 1 ? $"{(int)played.TotalHours:N0}h {played.Minutes}m" : $"{played.Minutes}m");
+            Line("Villages conquered", $"{Stat(StatKind.VillagesConquered):N0}");
+            Line("Villages lost", $"{Stat(StatKind.VillagesLost):N0}");
+            Line("Resources plundered", $"{Stat(StatKind.Loot):N0}");
+            Line("Troops defeated attacking", $"{Stat(StatKind.DefeatedAttacking):N0}");
+            Line("Troops defeated defending", $"{Stat(StatKind.DefeatedDefending):N0}");
+            Line("Troops lost", $"{Stat(StatKind.TroopsLost):N0}");
+            Line("Best rank", r.BestRank > 0 ? $"{r.BestRank:N0}" : "–");
+            Line("Most villages held", $"{r.MostVillages:N0}");
         }
 
         void BuildNewWorldScreen()
@@ -67,6 +115,9 @@ namespace MedievalWorldConquest
             modeButtons[1].userData = TimeMode.PausedWhenClosed;
             foreach (var b in modeButtons) modeRow.Add(b);
             panel.Add(SettingRow("When closed", modeRow));
+            // A fast world that runs on while the game is closed gets away from the player overnight.
+            speedWarning = Text("", "row-reason", "speed-warning");
+            panel.Add(speedWarning);
 
             // How cleverly the rival lords play (how many there are is the world's own).
             var skillRow = Element("setting-options");
@@ -142,12 +193,29 @@ namespace MedievalWorldConquest
         {
             chosenSpeed = speed;
             foreach (var b in speedButtons) b.EnableInClassList("option--selected", (float)b.userData == speed);
+            WarnAboutSpeed();
         }
 
         void ChooseMode(TimeMode mode)
         {
             chosenMode = mode;
             foreach (var b in modeButtons) b.EnableInClassList("option--selected", (TimeMode)b.userData == mode);
+            WarnAboutSpeed();
+        }
+
+        Label speedWarning;
+
+        /// <summary>A real-time world at a high speed runs on for days of game time while the game is closed overnight.</summary>
+        void WarnAboutSpeed()
+        {
+            if (speedWarning == null) return;
+            bool risky = chosenMode == TimeMode.RealTime && chosenSpeed >= 20f;
+            double nightDays = 8 * chosenSpeed / 24.0; // game days that pass in an eight-hour night away
+            SetText(speedWarning, risky
+                ? $"Careful: at {SpeedText(chosenSpeed)} a real-time world races on while the game is closed. A night's sleep is about {nightDays:0} days of game time, " +
+                  "enough to lose everything. Choose \"Paused\" unless you'll be checking in all the time."
+                : "");
+            Show(speedWarning, risky);
         }
 
         /// <summary>Opens the new-world screen for an empty slot.</summary>
@@ -177,12 +245,15 @@ namespace MedievalWorldConquest
 
         /// <param name="summaries">Each save slot's world (null: empty).</param>
         /// <param name="errors">For each slot: why its save couldn't be read, if it couldn't.</param>
-        public void ShowStart(SaveSummary[] summaries, string[] errors)
+        /// <param name="record">The player's lifetime record, for the Your Record screen.</param>
+        public void ShowStart(SaveSummary[] summaries, string[] errors, PlayerRecord record)
         {
             Show(startScreen, true);
             Show(newWorldScreen, false);
+            Show(recordScreen, false);
             Show(hud, false);
             Show(menu, false);
+            ShowRecord(record);
 
             slotRow.Clear();
             for (int i = 0; i < summaries.Length; i++)

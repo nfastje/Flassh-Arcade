@@ -85,17 +85,27 @@ namespace MedievalWorldConquest
                 summaries[i] = SaveFiles.Summary(i, out errors[i]);
                 if (summaries[i] != null && (latest < 0 || summaries[i].SavedAtUtcTicks > summaries[latest].SavedAtUtcTicks)) latest = i;
             }
-            ui.ShowStart(summaries, errors);
+            ui.ShowStart(summaries, errors, PlayerRecord.Lifetime(ProfileFile.Load(), summaries));
             var backdrop = latest >= 0 ? SaveFiles.Load(latest, out _, out _) : null;
             ShowVillage(backdrop?.Settings.Seed ?? 0);
             if (backdrop?.PlayerVillage != null) village.ShowVillage(backdrop.PlayerVillage);
         }
 
-        /// <summary>Deletes the world in a slot for good, and shows the slots again.</summary>
+        /// <summary>
+        /// Deletes the world in a slot for good, and shows the slots again. What the player did there is kept first,
+        /// in their lifetime record.
+        /// </summary>
         public void DeleteWorld(int saveSlot)
         {
             try
             {
+                var summary = SaveFiles.Summary(saveSlot, out _);
+                if (summary != null)
+                {
+                    var record = ProfileFile.Load();
+                    record.Bank(summary);
+                    ProfileFile.Save(record);
+                }
                 SaveFiles.Delete(saveSlot);
             }
             catch (Exception e) when (e is System.IO.IOException || e is UnauthorizedAccessException)
@@ -213,12 +223,20 @@ namespace MedievalWorldConquest
                 if (ui.DialogOpen || ui.InfoOpen) ui.CloseDialog();
                 else ui.ToggleMenu();
             }
+            if (kb != null && kb.pKey.wasPressedThisFrame && !ui.Typing) TogglePause();
 
-            // The world runs on regardless of menus, like the browser games it's based on.
-            world.AdvanceByRealSeconds(dt);
+            // The world runs on regardless of menus, like the browser games it's based on (unless the player has
+            // paused a world that only runs while it's played).
+            if (!Paused)
+            {
+                world.AdvanceByRealSeconds(dt);
+                world.PlayedSeconds += dt;
+            }
             AnnounceNewReports();
             AnnounceNewMessages();
             SoundTheHorn();
+            world.UpdateQuests();
+            CheckTips();
             ui.Refresh(world);
 
             // Winning (once) and losing everything each get their own screen.
@@ -255,7 +273,8 @@ namespace MedievalWorldConquest
             if (newest <= lastAnnouncedReport) return;
             lastAnnouncedReport = newest;
             var report = world.FindReport(newest);
-            if (report == null) return;
+            // (A raid cycle's raids that go to plan come and go quietly.)
+            if (report == null || report.Routine) return;
             ui.ShowToast($"New report: {ReportsPanel.Title(report)}", 4f);
             if (report.Kind == ReportKind.ResourcesArrived) audio.Play(GameAudio.Sound.Coins, 0.4f);
             else if (report.Kind != ReportKind.SupportArrived) audio.Play(report.PlayerWon ? GameAudio.Sound.Victory : GameAudio.Sound.Defeat);
@@ -293,6 +312,127 @@ namespace MedievalWorldConquest
 
         /// <summary>Whether the game has any sounds yet (none until custom clips are added).</summary>
         public bool HasSounds => audio != null && audio.HasSounds;
+
+        /// <summary>Whether there's a music track yet (none until one is added), and switching it on and off.</summary>
+        public bool HasMusic => audio != null && audio.HasMusic;
+        public bool MusicOn => audio != null && !audio.MusicOff;
+
+        public bool ToggleMusic()
+        {
+            audio.SetMusicOff(!audio.MusicOff);
+            return !audio.MusicOff;
+        }
+
+        // ---------------------------------------------------------------- the Account Manager
+
+        public void SetVillageTemplate(int villageId, string templateName) => world?.SetVillageTemplate(world.FindVillage(villageId), templateName);
+
+        public void SetTroopTargets(int villageId, int[] targets)
+        {
+            if (world == null) return;
+            world.SetTroopTargets(world.FindVillage(villageId), targets);
+            ui.ShowToast("Troop targets saved.", 2f);
+        }
+
+        /// <summary>A new build template of the player's; returns why not, or null.</summary>
+        public string CreateTemplate(string name, string copyFrom) => world?.CreateTemplate(name, copyFrom);
+
+        public void DeleteTemplate(string name) => world?.DeleteTemplate(name);
+
+        /// <summary>A template was changed: the villages that follow it act on it now.</summary>
+        public void TemplateEdited(string name)
+        {
+            if (world?.HumanPlayer == null) return;
+            foreach (var v in new System.Collections.Generic.List<Village>(world.VillagesOf(world.HumanPlayer.Id)))
+                if (world.ManagementOf(v.Id)?.Template == name) world.Manage(v);
+        }
+
+        // ---------------------------------------------------------------- pause
+
+        bool paused;
+
+        /// <summary>
+        /// Whether the world is paused. Only worlds that stand still while the game is closed can be paused: a
+        /// real-time world runs on, as the browser games did.
+        /// </summary>
+        public bool Paused => paused && CanPause;
+
+        public bool CanPause => world != null && world.Settings.TimeMode == TimeMode.PausedWhenClosed;
+
+        public void TogglePause()
+        {
+            if (!CanPause) return;
+            paused = !paused;
+            ui.ShowToast(paused ? "Paused. Nothing moves until you resume." : "Resumed.", 2f);
+        }
+
+        // ---------------------------------------------------------------- quests and tips
+
+        const string TipsOffKey = "MedievalWorldConquest.TipsOff";
+        float nextTipCheck;
+
+        /// <summary>Whether tips are shown (the player's choice in the menu; quests are always on).</summary>
+        public bool TipsOn => PlayerPrefs.GetInt(TipsOffKey, 0) == 0;
+
+        public bool ToggleTips()
+        {
+            PlayerPrefs.SetInt(TipsOffKey, TipsOn ? 1 : 0);
+            PlayerPrefs.Save();
+            if (!TipsOn) ui.HideTip();
+            return TipsOn;
+        }
+
+        /// <summary>Claims the current quest's reward.</summary>
+        public void ClaimQuest()
+        {
+            var quest = world?.ClaimQuest();
+            if (quest == null) return;
+            var r = quest.Reward;
+            ui.ShowToast(quest.Title == World.LootAssistantQuest
+                ? $"Quest done: {quest.Title}. +{r.Wood:N0} of each resource, and the Loot Assistant is yours: see the Loot tab."
+                : $"Quest done: {quest.Title}. +{r.Wood:N0} wood, +{r.Clay:N0} clay, +{r.Iron:N0} iron in {world.PlayerVillage.Name}.", 5f);
+            audio.Play(GameAudio.Sound.Coins, 0.5f);
+        }
+
+        // ---------------------------------------------------------------- the Loot Assistant
+
+        public void SetLootTemplate(int which, int[] troops)
+        {
+            if (world == null) return;
+            world.SetLootTemplate(which, troops);
+            ui.ShowToast($"Template {"ABC"[which]} saved.", 2f);
+        }
+
+        /// <summary>A one-click raid from the current village with template A, B or C.</summary>
+        public void SendLoot(int targetId, int which)
+        {
+            if (world == null) return;
+            string problem = world.SendLoot(world.PlayerVillage, world.FindVillage(targetId), which);
+            if (problem != null) ui.ShowToast(problem, 3f);
+        }
+
+        /// <summary>Puts a village in the raid cycle, raided from the current village.</summary>
+        public void StartCycle(int targetId, int which)
+        {
+            if (world == null) return;
+            var target = world.FindVillage(targetId);
+            string problem = world.StartCycle(world.PlayerVillage, target, which);
+            ui.ShowToast(problem ?? $"{target.Name} is in the raid cycle: raided with template {"ABC"[which]} each time its raiders get home.", 3f);
+        }
+
+        public void StopCycle(int targetId) => world?.StopCycle(targetId);
+
+        /// <summary>Once a second: the next tip whose moment has come, if tips are on and none is showing.</summary>
+        void CheckTips()
+        {
+            if (Time.unscaledTime < nextTipCheck) return;
+            nextTipCheck = Time.unscaledTime + 1f;
+            if (!TipsOn || ui.TipShowing || ui.EndScreenOpen) return;
+            var tip = world.NextTip();
+            if (tip == null) return;
+            world.MarkTipShown(tip);
+            ui.ShowTip(tip.TextIn(world));
+        }
 
         void UpdateVillage(float dt)
         {

@@ -17,6 +17,7 @@ namespace MedievalWorldConquest
         public void StartNewWorld(WorldSettings settings, int saveSlot)
         {
             slot = saveSlot;
+            paused = false;
             world = World.CreateNew(settings);
             ListenForSounds();
             SaveWorld();
@@ -39,10 +40,14 @@ namespace MedievalWorldConquest
             }
 
             slot = saveSlot;
+            paused = false;
             world = loaded;
             double away = SaveGame.CatchUpRealSeconds(world, savedAt, DateTime.UtcNow);
             double before = world.Now;
+            // (While the player was away, nobody expects them to answer calls for help.)
+            world.PlayerAway = true;
             world.AdvanceByRealSeconds(away);
+            world.PlayerAway = false;
 
             ListenForSounds(); // after catching up: what happened while away doesn't all play at once
             ShowVillage(world.Settings.Seed);
