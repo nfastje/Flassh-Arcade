@@ -53,7 +53,7 @@ namespace LittleFishy
         const int MediumPerLarge = 10;
 
         Camera cam;
-        FishyAudio sounds;
+        ArcadeAudio sounds;
         Tank tank;
         Transform school;
         Fish player;
@@ -84,7 +84,8 @@ namespace LittleFishy
             tank = new GameObject("Tank").AddComponent<Tank>();
             tank.Init(cam, WaterTop, SandTop);
             school = new GameObject("Fish").transform;
-            sounds = gameObject.AddComponent<FishyAudio>();
+            // Sounds and music, once there are files for them (silent until then).
+            sounds = ArcadeAudio.Create(gameObject, "LittleFishy", "Eat", "Death", "Win");
 
             ResetGame();
             state = State.Title;
@@ -258,6 +259,7 @@ namespace LittleFishy
             targetLength = Mathf.Min(WinLength, Mathf.Sqrt(targetLength * targetLength + GrowthPerArea * f.Length * f.Length));
             eaten++;
             tank.Burst(player.Mouth, 3 + (int)(relative * 5f), 0.05f + f.Length * 0.05f);
+            sounds.Play("Eat", 0.4f + 0.4f * Mathf.Clamp01(relative));
 
             if (targetLength >= WinLength) Win();
         }
@@ -267,14 +269,14 @@ namespace LittleFishy
             state = State.GameOver;
             player.SetBellyUp();
             player.Velocity = Vector2.zero;
-            sounds.PlayDeath();
+            sounds.Play("Death", 0.8f);
             tank.Burst(player.Position, 12, player.Length * 0.1f);
         }
 
         void Win()
         {
             state = State.Won;
-            sounds.PlayWin();
+            sounds.Play("Win", 0.7f);
             tank.Burst(player.Position, 30, player.Length * 0.3f);
         }
 
@@ -383,6 +385,17 @@ namespace LittleFishy
             return GUI.Button(new Rect(Screen.width / 2f - 130f * s, y, 260f * s, 48f * s), text, button);
         }
 
+        /// <summary>Sound and Music switches, under the pause menu's buttons, once there are files for them.</summary>
+        void SoundSwitches(float y, float step)
+        {
+            if (sounds.HasSounds)
+            {
+                if (MenuButton(y, sounds.Muted ? "Sound: Off" : "Sound: On")) sounds.ToggleSound();
+                y += step;
+            }
+            if (sounds.HasMusic && MenuButton(y, sounds.MusicOff ? "Music: Off" : "Music: On")) sounds.ToggleMusic();
+        }
+
         /// <summary>Top-left tally of fish eaten: large bones, then medium, then small (5 small = 1 medium, 10 medium = 1 large).</summary>
         void DrawBones(float s)
         {
@@ -444,6 +457,7 @@ namespace LittleFishy
                     if (MenuButton(h * 0.25f + 120f * s, "Resume")) state = State.Playing;
                     if (MenuButton(h * 0.25f + 180f * s, "Restart")) Restart();
                     if (MenuButton(h * 0.25f + 240f * s, "Main Menu")) Arcade.LoadHome();
+                    SoundSwitches(h * 0.25f + 300f * s, 60f * s);
                     break;
 
                 case State.GameOver:

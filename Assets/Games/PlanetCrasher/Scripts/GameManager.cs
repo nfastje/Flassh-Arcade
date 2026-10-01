@@ -81,7 +81,7 @@ namespace PlanetCrasher
         }
 
         Camera cam;
-        Sfx sfx;
+        ArcadeAudio sfx;
         Transform world;
         LineRenderer arenaEdge;
         SpaceBody player;
@@ -111,7 +111,8 @@ namespace PlanetCrasher
             cam.backgroundColor = new Color(0.015f, 0.015f, 0.05f);
 
             world = new GameObject("World").transform;
-            sfx = gameObject.AddComponent<Sfx>();
+            // Sounds and music, once there are files for them (silent until then).
+            sfx = ArcadeAudio.Create(gameObject, "PlanetCrasher", "CrunchSmall", "CrunchMedium", "CrunchLarge", "LevelUp", "Death", "Win");
             new GameObject("Star Field").AddComponent<StarField>().Init(cam);
             arenaEdge = CreateArenaEdge();
 
@@ -369,7 +370,7 @@ namespace PlanetCrasher
             targetRadius = Mathf.Min(ArenaRadius, Mathf.Sqrt(targetRadius * targetRadius + b.Radius * b.Radius * GrowthPerArea));
 
             SpawnDebris(player.Position + dir * pr, b.MainColor, 6 + (int)(10f * relative), pr * 3f, b.Radius * 0.3f);
-            sfx.PlayCrunch(relative);
+            sfx.Play(relative < 1f / 3f ? "CrunchSmall" : relative < 2f / 3f ? "CrunchMedium" : "CrunchLarge", 0.3f + 0.4f * relative);
             shake = Mathf.Max(shake, 0.25f * relative);
             CheckStage();
         }
@@ -380,7 +381,7 @@ namespace PlanetCrasher
             SpawnDebris(player.Position, player.MainColor, 40, pr * 6f, pr * 0.35f);
             SpawnDebris(impact, player.MainColor, 15, pr * 8f, pr * 0.2f);
             player.gameObject.SetActive(false);
-            sfx.PlayDeath();
+            sfx.Play("Death", 0.9f);
             shake = 1f;
             state = State.GameOver;
         }
@@ -393,7 +394,7 @@ namespace PlanetCrasher
                 player.SetKind(Stages[stageIndex].Kind, Random.Range(0, ProceduralArt.VariantsPerKind));
                 banner = IsBlackHole ? "You are now a Black Hole! Swallow the universe!" : $"You are now a {Stages[stageIndex].Name}!";
                 bannerTime = 2.5f;
-                sfx.PlayLevelUp();
+                sfx.Play("LevelUp", 0.6f);
             }
 
             if (targetRadius >= ArenaRadius * 0.98f) Win();
@@ -405,7 +406,7 @@ namespace PlanetCrasher
             state = State.Won;
             foreach (var b in bodies)
                 if (!b.Dying) Swallow(b, player);
-            sfx.PlayLevelUp();
+            sfx.Play("Win", 0.8f);
             shake = 1f;
         }
 
@@ -865,6 +866,17 @@ namespace PlanetCrasher
             return GUI.Button(new Rect(Screen.width / 2f - 130f * s, y, 260f * s, 48f * s), text, button);
         }
 
+        /// <summary>Sound and Music switches, under the pause menu's buttons, once there are files for them.</summary>
+        void SoundSwitches(float y, float step)
+        {
+            if (sfx.HasSounds)
+            {
+                if (MenuButton(y, sfx.Muted ? "Sound: Off" : "Sound: On")) sfx.ToggleSound();
+                y += step;
+            }
+            if (sfx.HasMusic && MenuButton(y, sfx.MusicOff ? "Music: Off" : "Music: On")) sfx.ToggleMusic();
+        }
+
         static void Fill(Rect r, Color color)
         {
             GUI.color = color;
@@ -904,6 +916,7 @@ namespace PlanetCrasher
                     if (MenuButton(h * 0.25f + 120f * s, "Resume")) state = State.Playing;
                     if (MenuButton(h * 0.25f + 180f * s, "Restart")) Restart();
                     if (MenuButton(h * 0.25f + 240f * s, "Main Menu")) Arcade.LoadHome();
+                    SoundSwitches(h * 0.25f + 300f * s, 60f * s);
                     break;
 
                 case State.GameOver:

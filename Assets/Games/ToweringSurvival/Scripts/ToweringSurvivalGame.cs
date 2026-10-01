@@ -36,9 +36,13 @@ namespace ToweringSurvival
         readonly System.Collections.Generic.List<LavaBubble> bubbles = new System.Collections.Generic.List<LavaBubble>();
         float bubbleTimer;
 
+        ArcadeAudio sounds;
         State state;
         float lavaHeight, playTime, cameraY;
         int height, best;
+        /// <summary>The best height when this climb began, and whether the climb has passed it yet (for its sound).</summary>
+        int bestAtStart;
+        bool newBest;
         string deathReason;
 
         float WellCentre => Stack.Width / 2f;
@@ -75,6 +79,8 @@ namespace ToweringSurvival
             stack.transform.SetParent(world, false);
             climber = Climber.Create(world);
             best = PlayerPrefs.GetInt(BestKey, 0);
+            // Sounds and music, once there are files for them (silent until then).
+            sounds = ArcadeAudio.Create(gameObject, "ToweringSurvival", "Jump", "WallJump", "NewBest", "Crushed", "Burned");
 
             ResetGame();
             state = State.Title;
@@ -99,6 +105,8 @@ namespace ToweringSurvival
             lavaHeight = LavaStart;
             playTime = 0f;
             height = 0;
+            bestAtStart = best;
+            newBest = false;
             cameraY = ViewSize - 2f;
             deathReason = null;
         }
@@ -170,6 +178,7 @@ namespace ToweringSurvival
             // A piece that came down on the climber pushes it down; only being pinned against something crushes it.
             if (climber.ResolveFallingBlocks(stack))
             {
+                sounds.Play("Crushed", 0.9f);
                 Die("CRUSHED", Color.white);
                 climber.Crush(); // squish flat, then pop into bubbles
                 return;
@@ -194,9 +203,21 @@ namespace ToweringSurvival
             }
 
             climber.Tick(dt, stack, move, jumpPressed, jumpHeld);
+            if (climber.Jumped) sounds.Play("Jump", 0.5f);
+            if (climber.WallJumped) sounds.Play("WallJump", 0.5f);
             height = Mathf.Max(height, Mathf.FloorToInt(climber.Position.y));
+            // Climbing past the best height so far (once a climb, and only if there was one to beat).
+            if (!newBest && bestAtStart > 0 && height > bestAtStart)
+            {
+                newBest = true;
+                sounds.Play("NewBest", 0.7f);
+            }
 
-            if (climber.Position.y < lavaHeight - 0.1f) Die("BURNED", new Color(0.25f, 0.1f, 0.05f));
+            if (climber.Position.y < lavaHeight - 0.1f)
+            {
+                sounds.Play("Burned", 0.9f);
+                Die("BURNED", new Color(0.25f, 0.1f, 0.05f));
+            }
         }
 
         void Die(string reason, Color tint)
@@ -346,6 +367,17 @@ namespace ToweringSurvival
             return GUI.Button(new Rect(well.center.x - 130f * s, y, 260f * s, 48f * s), text, button);
         }
 
+        /// <summary>Sound and Music switches, under the pause menu's buttons, once there are files for them.</summary>
+        void SoundSwitches(Rect well, float y, float step)
+        {
+            if (sounds.HasSounds)
+            {
+                if (MenuButton(well, y, sounds.Muted ? "Sound: Off" : "Sound: On")) sounds.ToggleSound();
+                y += step;
+            }
+            if (sounds.HasMusic && MenuButton(well, y, sounds.MusicOff ? "Music: Off" : "Music: On")) sounds.ToggleMusic();
+        }
+
         void OnGUI()
         {
             var well = WellOnScreen;
@@ -382,6 +414,7 @@ namespace ToweringSurvival
                     if (MenuButton(well, h * 0.25f + 120f * s, "Resume")) state = State.Playing;
                     if (MenuButton(well, h * 0.25f + 180f * s, "Restart")) Restart();
                     if (MenuButton(well, h * 0.25f + 240f * s, "Main Menu")) Arcade.LoadHome();
+                    SoundSwitches(well, h * 0.25f + 300f * s, 58f * s);
                     break;
 
                 case State.GameOver:

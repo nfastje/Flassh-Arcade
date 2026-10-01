@@ -40,6 +40,10 @@ namespace ToweringSurvival
         public Vector2 Velocity;
         public bool Grounded { get; private set; }
 
+        /// <summary>Whether the last <see cref="Tick"/> jumped off the ground, or off a wall (for their sounds).</summary>
+        public bool Jumped { get; private set; }
+        public bool WallJumped { get; private set; }
+
         // The soap is drawn three times, one well-width apart. The opaque panels outside the well hide the extra
         // copies, so when you straddle an edge, half of you shows on each side of the screen.
         SpriteRenderer body, wrapLeft, wrapRight;
@@ -181,6 +185,7 @@ namespace ToweringSurvival
             sinceOnWall += dt;
             sinceWallJump += dt;
             sinceJumpPressed = jumpPressed ? 0f : sinceJumpPressed + dt;
+            Jumped = WallJumped = false;
 
             // Horizontal: accelerate towards the input direction; slower and floatier in the air.
             // Right after a wall jump, input is ignored so the kick away isn't cancelled.
@@ -207,6 +212,7 @@ namespace ToweringSurvival
                     Velocity.y = JumpSpeed;
                     Velocity.x = Mathf.Clamp(Velocity.x, -AirSpeed, AirSpeed); // take off mostly upwards
                     sinceJumpPressed = sinceGrounded = 1f;
+                    Jumped = true;
                 }
                 else if (sinceOnWall < WallCoyoteTime)
                 {
@@ -216,6 +222,7 @@ namespace ToweringSurvival
                     wallJumpLock = climbing ? WallClimbLock : WallJumpLock;
                     sinceJumpPressed = sinceOnWall = 1f;
                     sinceWallJump = 0f;
+                    WallJumped = true;
                 }
             }
             if (!jumpHeld && Velocity.y > 0f) Velocity.y *= Mathf.Pow(JumpCutFactor, dt * 20f);
