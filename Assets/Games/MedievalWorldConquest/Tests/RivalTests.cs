@@ -20,6 +20,58 @@ namespace MedievalWorldConquest.Tests
             Math.Sqrt((v.X - World.MapSize / 2.0) * (v.X - World.MapSize / 2.0) + (v.Y - World.MapSize / 2.0) * (v.Y - World.MapSize / 2.0));
 
         [Test]
+        public void LordsLearnHowManyScoutsItTakesAndBackOff()
+        {
+            var world = World.CreateNew(new WorldSettings { Seed = 1234, Speed = 1f, RivalDensity = 1f, PlayerName = "Tester", ProtectionDays = 0 });
+            var lord = Lords(world).First(p => p.Personality != AiPersonality.Noob);
+            var from = HomeOf(world, lord);
+            var player = world.PlayerVillage;
+            player.Troops[(int)UnitType.Scout] = 200;
+            from.Troops[(int)UnitType.Scout] = 50;
+            Assert.AreEqual(3, world.ScoutRun(lord, from, player.Id, 3), "a farm: the usual three");
+            Assert.AreEqual(World.MinStageScouts, world.ScoutRun(lord, from, player.Id, 3, player: true), "a player, early on: twenty");
+            Assert.AreEqual(25, World.StageScouts(1000), "early: twenty-five");
+            Assert.AreEqual(100, World.StageScouts(4000), "mid-game: a hundred");
+            Assert.AreEqual(200, World.StageScouts(8000), "late: two hundred");
+            Assert.AreEqual(World.MaxStageScouts, World.StageScouts(50000));
+
+            var look = new int[Units.Count];
+            look[(int)UnitType.Scout] = 3;
+            from.Troops[(int)UnitType.Scout] += 3;
+            var run = world.Send(from, player, look, CommandKind.Attack);
+            world.AdvanceTo(run.ArriveTime);
+            var note = lord.Notes.Single(n => n.VillageId == player.Id);
+            Assert.AreEqual(7, note.ScoutsNeeded, "three didn't get through: next time seven");
+            Assert.AreEqual(World.ScoutWaitHours * 3600, note.ScoutAgainAt - world.Now, 1, "after a few hours");
+            Assert.AreEqual(1, note.ScoutFails);
+            Assert.AreEqual(0, world.ScoutRun(lord, from, player.Id, 3), "and not before the wait is over");
+
+            world.AdvanceTo(note.ScoutAgainAt + 1);
+            Assert.AreEqual(7, world.ScoutRun(lord, from, player.Id, 3));
+            from.Troops[(int)UnitType.Scout] = 5;
+            Assert.AreEqual(0, world.ScoutRun(lord, from, player.Id, 3), "too few to get through: it doesn't try");
+        }
+
+        [Test]
+        public void ALookThatSeesOnlyTheStoresWorksWithNotesFromASave()
+        {
+            // A save brings back a note's never-filled building list as empty, not missing (the crash of 2026-10-01).
+            var world = World.CreateNew(new WorldSettings { Seed = 1234, Speed = 1f, RivalDensity = 1f, PlayerName = "Tester", ProtectionDays = 0 });
+            var lord = Lords(world).First(p => p.Personality != AiPersonality.Noob);
+            var from = HomeOf(world, lord);
+            var player = world.PlayerVillage;
+            lord.Notes.Add(new AiNote { VillageId = player.Id, SeenLevels = new int[0], SeenTroops = new int[0] });
+            player.Troops[(int)UnitType.Scout] = 100;
+            var look = new int[Units.Count];
+            look[(int)UnitType.Scout] = 200; // two to one: about two in three come back, enough for the stores, not the buildings
+            from.Troops[(int)UnitType.Scout] += 200;
+            var run = world.Send(from, player, look, CommandKind.Attack);
+            Assert.DoesNotThrow(() => world.AdvanceTo(run.ArriveTime));
+            var note = lord.Notes.Last(n => n.VillageId == player.Id);
+            Assert.GreaterOrEqual(note.LootSeenAt, 0, "the stores were counted");
+        }
+
+        [Test]
         public void ThePlayerIsCalledWhatTheyChose()
         {
             Assert.AreEqual("Tester", NewWorld().HumanPlayer.Name);

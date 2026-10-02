@@ -96,7 +96,9 @@ namespace MedievalWorldConquest.Simulation
 
             report.LoyaltyBefore = (int)Math.Floor(target.Loyalty);
             target.Loyalty -= LoyaltyLoss(command);
-            if (target.Loyalty > 0)
+            // Loyalty grows back a little at a time, so it's seldom a whole number: the village falls once what's
+            // shown (the whole number) reaches 0, not only at exactly 0, so a report never says "0" of a village that held.
+            if (target.Loyalty >= 1)
             {
                 report.LoyaltyAfter = (int)Math.Floor(target.Loyalty);
                 return false;
@@ -108,8 +110,8 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>
-        /// A village changes hands. Its new owner's surviving attackers move in, less the nobleman who now rules
-        /// it; whatever was being built or trained there is lost; a barbarian village gets a proper name.
+        /// A village changes hands. Its new owner's surviving attackers stay to guard it, less the nobleman who now
+        /// rules it; whatever was being built or trained there is lost; a barbarian village gets a proper name.
         /// </summary>
         void Conquer(Command command, Village attacker, Village target, int[] survivors)
         {
@@ -123,6 +125,7 @@ namespace MedievalWorldConquest.Simulation
             if (winnerTribe != null) winnerTribe.ConquestsSinceTick++;
             if (!wasBarbarian && FindPlayer(oldOwner) is Player beaten) beaten.LostVillageAt = Now;
             AddStat(command.OwnerId, StatKind.VillagesConquered, 1);
+            if (!wasBarbarian) NoteWarConquest(command.OwnerId, oldOwner);
             if (!wasBarbarian) AddStat(oldOwner, StatKind.VillagesLost, 1);
             SetOwner(target, command.OwnerId);
             target.Loyalty = LoyaltyAfterConquest;
@@ -141,13 +144,20 @@ namespace MedievalWorldConquest.Simulation
                 Array.Clear(target.Troops, 0, target.Troops.Length);
             }
             target.FedTo = -1;
-            // The old owner's troops out on the march are no longer this village's concern.
+            // The old owner's troops out on the march are no longer this village's concern, and those it had
+            // stationed in other villages, supporting them, are gone with it (as are any still on their way there:
+            // see Station). One look through the villages' support, once per conquest.
             target.AwayPopulation = 0;
+            if (!wasBarbarian)
+                foreach (var v in Villages)
+                    if (v.Supports.Count > 0) v.Supports.RemoveAll(g => g.FromVillageId == target.Id && g.OwnerId == oldOwner);
 
-            // The survivors stop counting against the village they came from and settle in the new one.
-            attacker.AwayPopulation = Math.Max(0, attacker.AwayPopulation - PopulationOf(survivors));
+            // The nobleman who rules it now is spent. The other survivors stay to guard it, as in Tribal Wars, as
+            // support from the village they came from (still counted at that village's farm, not the new one's)
+            // until they're sent home.
             survivors[(int)UnitType.Nobleman]--;
-            for (int i = 0; i < Units.Count; i++) target.Troops[i] += survivors[i];
+            attacker.AwayPopulation = Math.Max(0, attacker.AwayPopulation - Units.Get(UnitType.Nobleman).Cost.Population);
+            Guard(command.OwnerId, attacker, target, survivors);
 
             // Lords who were after this village find another; the loser remembers who took it.
             foreach (var p in Players)
@@ -166,6 +176,25 @@ namespace MedievalWorldConquest.Simulation
             }
 
             CheckVictory();
+        }
+
+        /// <summary>
+        /// The troops in a village their owner has just won (or that their noble train reached after it was won).
+        /// The player's stay to guard it, as support from the village they came from, until sent home; a lord's
+        /// head straight home, back to raiding and the next conquest.
+        /// </summary>
+        void Guard(int ownerId, Village from, Village host, int[] troops)
+        {
+            if (Total(troops) <= 0) return;
+            if (!IsHuman(ownerId))
+            {
+                var slowest = SlowestUnit(troops);
+                March(CommandKind.Return, ownerId, host, from, troops, default, slowest.HasValue ? TravelSeconds(host, from, slowest.Value) : 0);
+                return;
+            }
+            var group = host.Supports.Find(g => g.FromVillageId == from.Id);
+            if (group == null) host.Supports.Add(group = new SupportGroup { FromVillageId = from.Id, OwnerId = ownerId, Troops = new int[Units.Count] });
+            for (int i = 0; i < Units.Count && i < troops.Length; i++) group.Troops[i] += troops[i];
         }
 
         /// <summary>

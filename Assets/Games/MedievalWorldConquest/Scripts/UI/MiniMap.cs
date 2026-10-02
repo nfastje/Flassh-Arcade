@@ -29,8 +29,7 @@ namespace MedievalWorldConquest
         float nextDraw;
         bool dragging;
 
-        static readonly Color32 Grass = new Color32(74, 98, 52, 255), Forest = new Color32(46, 70, 38, 255);
-        static readonly Color32 Hills = new Color32(98, 90, 76, 255), Water = new Color32(40, 66, 106, 255);
+        static readonly Color32 Grass = new Color32(74, 98, 52, 255), Water = new Color32(40, 66, 106, 255);
 
         /// <param name="centerOn">Moves the map view to a point, in map fields.</param>
         public MiniMap(Action<Vector2> centerOn)
@@ -97,7 +96,8 @@ namespace MedievalWorldConquest
                 for (int fx = 0; fx < World.MapSize; fx++)
                 {
                     var t = world.TerrainAt(fx, fy);
-                    var c = t == TerrainType.Water ? Water : t == TerrainType.Forest ? Forest : t == TerrainType.Hills ? Hills : Grass;
+                    // Only water and plains: woods and hills are scenery for the big map, kept off the minimap so the villages stand out.
+                    var c = t == TerrainType.Water ? Water : Grass;
                     for (int py = 0; py < PixelsPerField; py++)
                         for (int px = 0; px < PixelsPerField; px++)
                             terrain[(fy * PixelsPerField + py) * size + fx * PixelsPerField + px] = c;

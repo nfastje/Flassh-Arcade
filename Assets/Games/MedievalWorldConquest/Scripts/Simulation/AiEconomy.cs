@@ -8,6 +8,19 @@ namespace MedievalWorldConquest.Simulation
     /// </summary>
     public partial class World
     {
+        // Army tuning (switches for the balance simulations; the defaults are the game's). Since 2026-10-01 (user's
+        // choice, after the army simulations): coins and noblemen don't count as army spending, and the record fades
+        // over five days, so lords keep real armies in every village and rebuild what they lose.
+        /// <summary>Whether gold coins and noblemen count towards a lord's spending on its army.</summary>
+        public static bool ExpansionIsArmySpending = false;
+        /// <summary>Game days over which a lord's record of spending fades by half (0: never: a lifetime total).</summary>
+        public static double LordSpendingMemoryDays = 5;
+        /// <summary>
+        /// Each village of a lord's keeps at least this share of its farm's room (what its buildings leave) filled
+        /// with its own troops, training them before anything else (0: no such floor).
+        /// </summary>
+        public static double GarrisonFloor = 0;
+
         /// <summary>
         /// Spends the village's resources on buildings and troops, keeping troops to the personality's share of all
         /// spending over time (whichever side is behind gets first call on the stores).
@@ -16,7 +29,18 @@ namespace MedievalWorldConquest.Simulation
         {
             double share = Math.Min(0.8, style.MilitaryShare * SkillMilitary);
             bool canTrain = v.Level(BuildingType.Barracks) > 0;
+            if (LordSpendingMemoryDays > 0)
+            {
+                double fade = Math.Pow(0.5, Math.Max(0, Now - lord.SpentAt) / (LordSpendingMemoryDays * SecondsPerDay));
+                lord.SpentOnBuildings *= fade;
+                lord.SpentOnTroops *= fade;
+                lord.SpentAt = Now;
+            }
             bool troopsDue = canTrain && lord.SpentOnTroops < share * (lord.SpentOnBuildings + lord.SpentOnTroops);
+
+            // A village short of its garrison trains troops before anything else.
+            if (canTrain && GarrisonFloor > 0 && v.TroopPopulation < GarrisonFloor * Math.Max(0, v.PopulationCapacity - v.BuildingPopulation))
+                AiRecruit(lord, v, style, 1, 2);
 
             // With an academy, noblemen come first: the lord saves up for them rather than spending on anything
             // else, unless its stores are about to overflow.
@@ -27,13 +51,13 @@ namespace MedievalWorldConquest.Simulation
                 if (FreeNobleSlots(lord) <= 0)
                 {
                     var coin = MintCoins(v, Math.Max(1, CheckMint(v, 1).MaxAffordable));
-                    if (coin.Status == MintStatus.Ok) lord.SpentOnTroops += coin.Total.Wood + coin.Total.Clay + coin.Total.Iron;
+                    if (coin.Status == MintStatus.Ok) SpentOnExpansion(lord, coin.Total);
                     else if (coin.Status == MintStatus.NotEnoughResources && !double.IsInfinity(coin.AffordableIn) && FullestStock(v) < 0.9) return;
                 }
                 else
                 {
                     var noble = Recruit(v, UnitType.Nobleman, 1);
-                    if (noble.Status == RecruitStatus.Ok) lord.SpentOnTroops += noble.Total.Wood + noble.Total.Clay + noble.Total.Iron;
+                    if (noble.Status == RecruitStatus.Ok) SpentOnExpansion(lord, noble.Total);
                     else if (noble.Status == RecruitStatus.NotEnoughResources && !double.IsInfinity(noble.AffordableIn) && FullestStock(v) < 0.9) return;
                 }
             }
@@ -47,7 +71,7 @@ namespace MedievalWorldConquest.Simulation
                 if (spare >= 1)
                 {
                     var coin = MintCoins(v, spare);
-                    if (coin.Status == MintStatus.Ok) lord.SpentOnTroops += coin.Total.Wood + coin.Total.Clay + coin.Total.Iron;
+                    if (coin.Status == MintStatus.Ok) SpentOnExpansion(lord, coin.Total);
                 }
             }
 
@@ -60,6 +84,14 @@ namespace MedievalWorldConquest.Simulation
             // Stores almost full with nothing more to build right now: troops rather than waste.
             if (canTrain && !troopsDue && (!saving || v.Queue.Count >= MaxBuildQueue) && FullestStock(v) > 0.85)
                 AiRecruit(lord, v, style, 1, 1);
+        }
+
+        /// <summary>Records what a lord spent on coins or a nobleman.</summary>
+        static void SpentOnExpansion(Player lord, Cost cost)
+        {
+            double total = (double)cost.Wood + cost.Clay + cost.Iron;
+            lord.SpentOnExpansion += total;
+            if (ExpansionIsArmySpending) lord.SpentOnTroops += total;
         }
 
         static double FullestStock(Village v) => Math.Max(v.Wood, Math.Max(v.Clay, v.Iron)) / Math.Max(1, v.StorageCapacity);
@@ -284,8 +316,12 @@ namespace MedievalWorldConquest.Simulation
             return false;
         }
 
-        /// <summary>All of a village's own troops: at home, in training, and out on attacks or heading home.</summary>
-        int[] ArmyOf(Village v)
+        /// <summary>
+        /// All of a village's own troops: at home, in training, out on attacks or support or heading home, and (if
+        /// <paramref name="stationed"/>) supporting other villages. (Lords skip the last: finding them means looking
+        /// through every village, too slow for every lord's turn.)
+        /// </summary>
+        int[] ArmyOf(Village v, bool stationed = false)
         {
             var army = new int[Units.Count];
             for (int i = 0; i < Units.Count; i++) army[i] = v.TroopCount((UnitType)i);
@@ -296,6 +332,11 @@ namespace MedievalWorldConquest.Simulation
                 if (ours)
                     for (int i = 0; i < Units.Count && i < c.Troops.Length; i++) army[i] += c.Troops[i];
             }
+            if (stationed)
+                foreach (var host in Villages)
+                    foreach (var g in host.Supports)
+                        if (g.FromVillageId == v.Id && g.OwnerId == v.OwnerId)
+                            for (int i = 0; i < Units.Count && i < g.Troops.Length; i++) army[i] += g.Troops[i];
             return army;
         }
 

@@ -88,7 +88,9 @@ namespace MedievalWorldConquest.Simulation
                             else if (!winners && r < 0.004 * Math.Max(0.15, 1 - age / 60)) next = RelationKind.Neutral;
                             break;
                         case RelationKind.Enemy:
-                            if ((Math.Min(sa, sb) < 0.5 * Math.Max(sa, sb) && r < 0.08) || (fights == 0 && r < 0.03)) next = RelationKind.Neutral;
+                            // With the human's tribe, peace is weighed as when the human offers it.
+                            if (humanA || humanB) { if (WeighPeace(humanA ? b : a, humanA ? a : b).yes && r < 0.1) next = RelationKind.Neutral; }
+                            else if ((Math.Min(sa, sb) < 0.5 * Math.Max(sa, sb) && r < 0.08) || (fights == 0 && r < 0.03)) next = RelationKind.Neutral;
                             break;
                     }
                     // Bandwagoning: a small tribe next to the leading bloc asks to join it.
@@ -116,6 +118,14 @@ namespace MedievalWorldConquest.Simulation
                         // The human's tribe: offers come by message; war and endings are just announced.
                         var ai = humanA ? b : a;
                         var mine = humanA ? a : b;
+                        if (now == RelationKind.Enemy && next == RelationKind.Neutral)
+                        {
+                            // Peace is offered, not imposed: the human may fight on.
+                            if (Messages.Exists(m => m.Kind == MessageKind.PactOffer && m.A == ai.Id && !m.Answered && Now - m.Time < 3 * SecondsPerDay)) continue;
+                            Write(MessageKind.PactOffer, FindPlayer(ai.LeaderId), $"Peace with {ai.Name}?", WeighPeace(ai, mine).why.Replace("We accept. ", ""),
+                                ai.Id, (int)RelationKind.Neutral, ai.Id);
+                            continue;
+                        }
                         if (next == RelationKind.Ally || next == RelationKind.NonAggression)
                         {
                             if (HumanPlayer.Reputation < -20 || Messages.Exists(m => m.Kind == MessageKind.PactOffer && m.A == ai.Id && !m.Answered && Now - m.Time < 3 * SecondsPerDay)) continue;

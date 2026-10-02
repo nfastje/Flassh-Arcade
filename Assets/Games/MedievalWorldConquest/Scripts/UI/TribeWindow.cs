@@ -40,7 +40,7 @@ namespace MedievalWorldConquest
             var human = world.HumanPlayer;
             var mine = world.TribeOf(human);
             var (points, villages) = world.TribeStrength(t);
-            string now = $"{t.Members.Count}|{t.LeaderId}|{points / 100}|{villages}|{(int)world.Relation(mine, t)}|{mine?.Id}|{human?.AskedToJoinTribe}";
+            string now = $"{t.Members.Count}|{t.LeaderId}|{points / 100}|{villages}|{(int)world.Relation(mine, t)}|{mine?.Id}|{human?.AskedToJoinTribe}|{(mine != null ? TribePanel.PeaceWaitMinutes(world, mine, t) : 0)}";
             if (now == signature) return;
             signature = now;
             SetText(title, $"{t.Name} [{t.Tag}]");
@@ -62,7 +62,8 @@ namespace MedievalWorldConquest
                 if (kind == RelationKind.Neutral) actions.Add(ButtonWith("Offer pact", () => game.ProposeRelation(id, RelationKind.NonAggression), "btn", "btn--small"));
                 if (kind != RelationKind.Ally && kind != RelationKind.Enemy) actions.Add(ButtonWith("Offer alliance", () => game.ProposeRelation(id, RelationKind.Ally), "btn", "btn--small"));
                 if (kind != RelationKind.Enemy) actions.Add(ButtonWith("Declare war", () => game.ProposeRelation(id, RelationKind.Enemy), "btn", "btn--small"));
-                if (kind != RelationKind.Neutral) actions.Add(ButtonWith(kind == RelationKind.Enemy ? "Make peace" : "End agreement", () => game.ProposeRelation(id, RelationKind.Neutral), "btn", "btn--small"));
+                if (kind == RelationKind.Enemy) actions.Add(TribePanel.PeaceButton(world, mine, t, () => game.ProposeRelation(id, RelationKind.Neutral)));
+                else if (kind != RelationKind.Neutral) actions.Add(ButtonWith("End agreement", () => game.ProposeRelation(id, RelationKind.Neutral), "btn", "btn--small"));
             }
             body.Add(actions);
 

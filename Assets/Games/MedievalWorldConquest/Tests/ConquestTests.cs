@@ -107,16 +107,53 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(home.OwnerId, target.OwnerId);
             Assert.AreNotEqual(World.BarbarianName, target.Name, "a won-over barbarian village gets a proper name");
             Assert.AreEqual(World.LoyaltyAfterConquest, target.Loyalty, 1e-6);
-            // The survivors moved in, less the nobleman who now rules it; nobody marches home.
+            // The survivors stay to guard it, as support from the village they came from (less the nobleman who
+            // now rules it); nobody marches home until sent.
             int axes = 100 - report.AttackerLost[(int)UnitType.Axeman];
-            Assert.AreEqual(axes, target.TroopCount(UnitType.Axeman));
-            Assert.AreEqual(0, target.TroopCount(UnitType.Nobleman), "the nobleman rules it now");
+            var guard = target.Supports.Single(g => g.FromVillageId == home.Id);
+            Assert.AreEqual(axes, guard.Troops[(int)UnitType.Axeman]);
+            Assert.AreEqual(0, guard.Troops[(int)UnitType.Nobleman], "the nobleman rules it now");
+            Assert.AreEqual(0, target.TroopCount(UnitType.Axeman), "they aren't the new village's own troops");
             Assert.IsFalse(world.Commands.Any(c => c.Kind == CommandKind.Return));
-            Assert.AreEqual(0, home.AwayPopulation, "they no longer count against the old village's farm");
+            Assert.AreEqual(axes * Units.Get(UnitType.Axeman).Cost.Population, home.AwayPopulation, "they count against their own village's farm, not the new one's");
+            Assert.IsNotNull(world.Recall(target, home.Id), "and go home when sent");
             Assert.AreEqual(0, report.Loot.Wood, "the stores stay: they're the conqueror's now");
             Assert.GreaterOrEqual(target.Wood, 400);
             Assert.AreEqual(2, world.HumanVillages().Count);
             Assert.IsFalse(target.IsBarbarian);
+        }
+
+        [Test]
+        public void LoyaltyBelowOneIsAVillageWonOver()
+        {
+            // Loyalty grows back a bit at a time: a nobleman taking at least the least he can from that plus a half
+            // leaves under 1, which is shown as 0, so the village is won (no report may say "0" of a village that held).
+            var world = ConquestWorld(out var home, out var target);
+            target.Loyalty = World.NobleLoyaltyMin + 0.5;
+            var attack = world.Send(home, target, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 1)), CommandKind.Attack);
+            world.AdvanceTo(attack.ArriveTime);
+            Assert.IsTrue(world.Reports.Last().Conquered);
+            Assert.AreEqual(home.OwnerId, target.OwnerId);
+        }
+
+        [Test]
+        public void AConqueredVillagesTroopsElsewhereAreGoneWithIt()
+        {
+            var world = ConquestWorld(out var home, out var target, rivals: 1);
+            // A lord's village, with 25 light cavalry of its own stationed in the lord's other village.
+            var lord = world.Players.First(p => !p.IsHuman && p.Personality != AiPersonality.Inactive && world.VillagesOf(p.Id).Count > 0);
+            var theirs = world.VillagesOf(lord.Id)[0];
+            var elsewhere = world.Villages.First(v => v != theirs && v != home);
+            var stationed = new int[Units.Count];
+            stationed[(int)UnitType.LightCavalry] = 25;
+            elsewhere.Supports.Add(new SupportGroup { FromVillageId = theirs.Id, OwnerId = lord.Id, Troops = stationed });
+            lord.ProtectedUntil = 0;
+            System.Array.Clear(theirs.Troops, 0, theirs.Troops.Length);
+            theirs.Loyalty = 10;
+            var attack = world.Send(home, theirs, Army((UnitType.Axeman, 100), (UnitType.Nobleman, 1)), CommandKind.Attack);
+            world.AdvanceTo(attack.ArriveTime);
+            Assert.AreEqual(home.OwnerId, theirs.OwnerId, "won over");
+            Assert.IsFalse(elsewhere.Supports.Any(g => g.FromVillageId == theirs.Id && g.OwnerId == lord.Id), "its troops elsewhere are gone");
         }
 
         [Test]

@@ -37,6 +37,13 @@ namespace MedievalWorldConquest.Simulation
         public string Template = "";
         /// <summary>How many of each unit the village should have (at home, out, or in training); 0: none wanted.</summary>
         public int[] TroopTargets = new int[Units.Count];
+        /// <summary>
+        /// The percentage of the village's spending that goes to troops (and their research) while it has both
+        /// buildings and troops still to get: whichever side is behind its share gets first call on the stores.
+        /// </summary>
+        public int TroopShare = World.DefaultTroopShare;
+        /// <summary>Recent spending on each side (fading by half every <see cref="World.ManagerMemorySeconds"/>), and when it was last updated.</summary>
+        public double SpentOnBuildings, SpentOnTroops, SpentAt;
     }
 
     /// <summary>
@@ -50,6 +57,18 @@ namespace MedievalWorldConquest.Simulation
     {
         /// <summary>Game seconds between the Account Manager's rounds.</summary>
         public const double ManagerTickSeconds = 15 * 60;
+
+        /// <summary>A village's share of spending on troops until the player changes it (percent).</summary>
+        public const int DefaultTroopShare = 50;
+
+        /// <summary>The troop shares the player can choose from (percent).</summary>
+        public static readonly int[] TroopShares = { 0, 25, 50, 75, 100 };
+
+        /// <summary>
+        /// How quickly the Account Manager forgets what it spent: half every two game days, so the split follows
+        /// what the village has been doing lately (and a new share takes hold within days).
+        /// </summary>
+        public const double ManagerMemorySeconds = 2 * SecondsPerDay;
 
         public List<ManagedVillage> ManagedVillages = new List<ManagedVillage>();
         public List<BuildTemplate> CustomTemplates = new List<BuildTemplate>();
@@ -137,12 +156,14 @@ namespace MedievalWorldConquest.Simulation
             Manage(v);
         }
 
-        public void SetTroopTargets(Village v, int[] targets)
+        /// <summary>Sets a village's troop targets, and the share of its spending that goes to troops (percent).</summary>
+        public void SetTroopTargets(Village v, int[] targets, int troopShare = DefaultTroopShare)
         {
             if (v == null || v.OwnerId != HumanPlayer?.Id || targets == null) return;
             var m = ManagementOf(v.Id, true);
             m.TroopTargets = new int[Units.Count];
             for (int i = 0; i < Units.Count && i < targets.Length; i++) m.TroopTargets[i] = Math.Max(0, targets[i]);
+            m.TroopShare = Math.Max(0, Math.Min(100, troopShare));
             Manage(v);
         }
 
@@ -188,17 +209,44 @@ namespace MedievalWorldConquest.Simulation
             foreach (var v in new List<Village>(VillagesOf(human.Id))) Manage(v);
         }
 
-        /// <summary>One round of the Account Manager for a village: construction first, then troops with what's left.</summary>
+        /// <summary>
+        /// One round of the Account Manager for a village. While it has both buildings and troops to get, spending
+        /// is split by the village's troop share: whichever side is behind its share goes first, and the other gets
+        /// what's left (so troops are trained even while a building is being saved up for, and the other way round).
+        /// With nothing left to build, troops get everything; and stores about to overflow go on troops rather than waste.
+        /// </summary>
         public void Manage(Village v)
         {
             var m = ManagementOf(v.Id);
             if (m == null || v.OwnerId != HumanPlayer?.Id) return;
             Touch(v);
+            ForgetOldSpending(m);
             var template = FindTemplate(m.Template);
-            bool buildingWaits = template != null && ManageConstruction(v, template);
-            // Troops get the resources the buildings aren't waiting for.
-            if (!buildingWaits) ManageTroops(v, m);
+            bool building = template != null && NextStep(v, template) != null;
+            bool troopsFirst = !building || TroopsDue(m);
+            if (troopsFirst) ManageTroops(v, m);
+            bool buildingWaits = building && ManageConstruction(v, template, m);
+            if (!troopsFirst && (!buildingWaits || FullestStock(v) > 0.9)) ManageTroops(v, m);
         }
+
+        /// <summary>Whether troops are behind their share of the village's recent spending.</summary>
+        static bool TroopsDue(ManagedVillage m)
+        {
+            double share = m.TroopShare / 100.0;
+            if (share <= 0) return false;
+            if (share >= 1) return true;
+            return m.SpentOnTroops < share * (m.SpentOnBuildings + m.SpentOnTroops);
+        }
+
+        void ForgetOldSpending(ManagedVillage m)
+        {
+            double fade = Math.Pow(0.5, Math.Max(0, Now - m.SpentAt) / ManagerMemorySeconds);
+            m.SpentOnBuildings *= fade;
+            m.SpentOnTroops *= fade;
+            m.SpentAt = Now;
+        }
+
+        static double Spent(Cost c) => (double)c.Wood + c.Clay + c.Iron;
 
         /// <summary>The next step of a template the village hasn't reached (counting what's queued), or null if it's done.</summary>
         public BuildStep NextStep(Village v, BuildTemplate template)
@@ -216,7 +264,7 @@ namespace MedievalWorldConquest.Simulation
         /// Queues template steps while there's room. Returns whether construction is waiting for resources (so troops
         /// shouldn't spend them).
         /// </summary>
-        bool ManageConstruction(Village v, BuildTemplate template)
+        bool ManageConstruction(Village v, BuildTemplate template, ManagedVillage m)
         {
             for (int guard = 0; guard < MaxBuildQueue && v.Queue.Count < MaxBuildQueue; guard++)
             {
@@ -236,31 +284,81 @@ namespace MedievalWorldConquest.Simulation
                 }
                 if (check.Status == BuildStatus.NotEnoughResources) return true;
                 if (check.Status != BuildStatus.Ok) return false;
-                QueueBuild(v, type);
+                if (QueueBuild(v, type).Status == BuildStatus.Ok) m.SpentOnBuildings += Spent(check.Cost);
             }
             return false;
         }
 
-        /// <summary>Recruits towards the village's troop targets, researching at the smithy what it must first.</summary>
+        /// <summary>
+        /// Recruits towards the village's troop targets, researching at the smithy what it must first, and making
+        /// room for them at the farm when it's full (on the troops' side of the spending).
+        /// </summary>
         void ManageTroops(Village v, ManagedVillage m)
         {
             if (m.TroopTargets == null) return;
-            var have = ArmyOf(v);
+            var have = ArmyOf(v, stationed: true);
+            bool wanted = false;
+            for (int i = 0; i < Units.Count && i < m.TroopTargets.Length; i++) wanted |= have[i] < m.TroopTargets[i];
+            if (!wanted) return;
+            if (v.FreePopulation < Math.Max(20, v.PopulationCapacity * 0.05) && v.QueuedCount(BuildingType.Farm) == 0 && v.Queue.Count < MaxBuildQueue)
+            {
+                var room = CheckBuild(v, BuildingType.Farm).Status == BuildStatus.WarehouseTooSmall ? BuildingType.Warehouse : BuildingType.Farm;
+                if (v.QueuedCount(room) == 0 && CheckBuild(v, room).Status == BuildStatus.Ok)
+                {
+                    var built = QueueBuild(v, room);
+                    if (built.Status == BuildStatus.Ok) m.SpentOnTroops += Spent(built.Cost);
+                }
+            }
+            // The units still wanted that can be trained (the others researched first).
+            var due = new List<(UnitType type, int missing, double weight)>();
+            var perBuilding = new Dictionary<BuildingType, int>();
             foreach (var type in Units.InDisplayOrder)
             {
                 int target = (int)type < m.TroopTargets.Length ? m.TroopTargets[(int)type] : 0;
                 if (target <= 0 || have[(int)type] >= target) continue;
                 if (!v.IsResearched(type))
                 {
-                    if (!v.IsBeingResearched(type) && CheckResearch(v, type).Status == ResearchStatus.Ok) StartResearch(v, type);
+                    if (!v.IsBeingResearched(type) && CheckResearch(v, type).Status == ResearchStatus.Ok)
+                    {
+                        var research = StartResearch(v, type);
+                        if (research.Status == ResearchStatus.Ok) m.SpentOnTroops += Spent(research.Cost);
+                    }
                     continue;
                 }
-                // A couple of batches at a time per building keeps it busy without tying up everything.
+                int missing = target - have[(int)type];
+                due.Add((type, missing, missing * Spent(UnitCost(type))));
                 var building = Units.Get(type).Building;
-                if (v.Recruitment.FindAll(o => o.Building == building).Count >= 2) continue;
-                int count = Math.Min(target - have[(int)type], MaxAffordable(v, type));
-                if (count > 0 && CheckRecruit(v, type, count).Status == RecruitStatus.Ok) Recruit(v, type, count);
+                perBuilding[building] = perBuilding.TryGetValue(building, out int n) ? n + 1 : 1;
             }
+            if (due.Count == 0) return;
+
+            // Each gets a share of what's in store in proportion to what it still needs (in resources), so they all
+            // grow towards their targets together rather than one after another; and each building may queue a
+            // batch for each of its units (at least two).
+            double total = 0;
+            foreach (var d in due) total += d.weight;
+            double wood = v.Wood, clay = v.Clay, iron = v.Iron, people = v.FreePopulation;
+            foreach (var (type, missing, weight) in due)
+            {
+                var building = Units.Get(type).Building;
+                if (QueuedBatches(v, building) >= Math.Min(MaxRecruitQueue, Math.Max(2, perBuilding[building]))) continue;
+                double share = total > 0 ? weight / total : 0;
+                int count = Math.Min(missing, Math.Min(MaxAffordable(v, type), AffordableWith(wood * share, clay * share, iron * share, people * share, UnitCost(type))));
+                if (count <= 0 || CheckRecruit(v, type, count).Status != RecruitStatus.Ok) continue;
+                var recruited = Recruit(v, type, count);
+                if (recruited.Status == RecruitStatus.Ok) m.SpentOnTroops += Spent(recruited.Total);
+            }
+        }
+
+        /// <summary>How many of a unit some resources and room at the farm pay for.</summary>
+        static int AffordableWith(double wood, double clay, double iron, double people, Cost each)
+        {
+            double most = int.MaxValue;
+            if (each.Wood > 0) most = Math.Min(most, wood / each.Wood);
+            if (each.Clay > 0) most = Math.Min(most, clay / each.Clay);
+            if (each.Iron > 0) most = Math.Min(most, iron / each.Iron);
+            if (each.Population > 0) most = Math.Min(most, people / each.Population);
+            return (int)Math.Max(0, Math.Floor(most));
         }
 
         /// <summary>What the Account Manager is doing in a village, in words.</summary>

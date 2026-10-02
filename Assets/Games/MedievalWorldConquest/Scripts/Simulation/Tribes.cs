@@ -91,6 +91,13 @@ namespace MedievalWorldConquest.Simulation
         public int A, B;
         public RelationKind Kind;
         public double Since;
+
+        // How the current war is going (kept from the day it was declared): villages each side has taken from the
+        // other, and the population of troops each has lost fighting the other.
+        public int TakenByA, TakenByB;
+        public long LostByA, LostByB;
+        /// <summary>When the human last offered peace in this war (0: never).</summary>
+        public double PeaceOfferedAt;
     }
 
     public partial class World
@@ -193,7 +200,17 @@ namespace MedievalWorldConquest.Simulation
                 Relations.Add(r = new TribeRelation { A = Math.Min(a.Id, b.Id), B = Math.Max(a.Id, b.Id) });
                 relationsByPair?.Add((r.A, r.B), r);
             }
-            if (r.Kind != kind) r.Since = Now;
+            if (r.Kind != kind)
+            {
+                r.Since = Now;
+                // A new war starts a new ledger.
+                if (kind == RelationKind.Enemy)
+                {
+                    r.TakenByA = r.TakenByB = 0;
+                    r.LostByA = r.LostByB = 0;
+                    r.PeaceOfferedAt = 0;
+                }
+            }
             r.Kind = kind;
         }
 
@@ -370,8 +387,10 @@ namespace MedievalWorldConquest.Simulation
         // ---------------------------------------------------------------- shared sightings
 
         /// <summary>
-        /// The freshest sighting of a village's defenders among a player's tribe mates (themselves included), and who
-        /// made it, as Tribal Wars tribes share their reports. Null if none of them has seen it.
+        /// The freshest sighting of a village's defenders among a player's tribe mates (themselves included) and the
+        /// members of tribes directly allied with theirs, and who made it, as Tribal Wars tribes share their reports.
+        /// Null if none of them has seen it. Only looked at, never copied: an ally's ally (not allied to this tribe)
+        /// doesn't see it, so nothing spreads along a chain of alliances.
         /// </summary>
         public (Player seer, AiNote note) SharedSighting(Player p, int villageId)
         {
@@ -391,8 +410,12 @@ namespace MedievalWorldConquest.Simulation
             Consider(p);
             var tribe = Diplomacy ? TribeOf(p) : null;
             if (tribe != null)
+            {
                 foreach (int id in tribe.Members)
                     if (id != p.Id) Consider(FindPlayer(id));
+                foreach (var ally in AlliesOf(tribe))
+                    foreach (int id in ally.Members) Consider(FindPlayer(id));
+            }
             return (bestSeer, best);
         }
 

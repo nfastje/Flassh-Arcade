@@ -140,7 +140,7 @@ namespace MedievalWorldConquest
         /// <summary>Steps to the player's next (or previous) village.</summary>
         public void CycleVillage(int step)
         {
-            var own = world?.HumanVillages();
+            var own = world?.HumanVillagesByName();
             if (own == null || own.Count < 2) return;
             int index = own.IndexOf(world.PlayerVillage);
             SelectVillage(own[((index + step) % own.Count + own.Count) % own.Count].Id);
@@ -178,7 +178,7 @@ namespace MedievalWorldConquest
 
         public void SaveWorld()
         {
-            if (world == null || slot < 0) return;
+            if (world == null || slot < 0 || catchingUp) return;
             try
             {
                 SaveFiles.Save(world, slot);
@@ -204,6 +204,7 @@ namespace MedievalWorldConquest
         {
             float dt = Time.unscaledDeltaTime;
             ui.Tick(dt);
+            if (catchingUp) return;
 
             var kb = Keyboard.current;
             bool escape = kb != null && kb.escapeKey.wasPressedThisFrame;
@@ -229,6 +230,12 @@ namespace MedievalWorldConquest
             // paused a world that only runs while it's played).
             if (!Paused)
             {
+                // Back from the background (the game doesn't run there): catch up behind the progress popup.
+                if (dt > CatchUpGap)
+                {
+                    StartCoroutine(CatchUp(Math.Min(dt, SaveGame.MaxCatchUpSeconds), null));
+                    return;
+                }
                 world.AdvanceByRealSeconds(dt);
                 world.PlayedSeconds += dt;
             }
@@ -327,10 +334,10 @@ namespace MedievalWorldConquest
 
         public void SetVillageTemplate(int villageId, string templateName) => world?.SetVillageTemplate(world.FindVillage(villageId), templateName);
 
-        public void SetTroopTargets(int villageId, int[] targets)
+        public void SetTroopTargets(int villageId, int[] targets, int troopShare)
         {
             if (world == null) return;
-            world.SetTroopTargets(world.FindVillage(villageId), targets);
+            world.SetTroopTargets(world.FindVillage(villageId), targets, troopShare);
             ui.ShowToast("Troop targets saved.", 2f);
         }
 

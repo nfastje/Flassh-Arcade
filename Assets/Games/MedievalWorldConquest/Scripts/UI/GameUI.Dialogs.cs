@@ -261,6 +261,47 @@ namespace MedievalWorldConquest
             Show(toast, true);
         }
 
+        // ---------------------------------------------------------------- catching up
+
+        VisualElement catchUpScreen, catchUpFill;
+        Label catchUpTitle, catchUpDay;
+
+        /// <summary>The popup while a live world catches up on time spent away: how long, and a bar of the days simulated.</summary>
+        void BuildCatchUp()
+        {
+            catchUpScreen = Element("screen", "centered", "dim");
+            var panel = Element("panel", "catch-up-panel");
+            catchUpTitle = Text("", "catch-up-title");
+            panel.Add(catchUpTitle);
+            var bar = Element("progress", "catch-up-progress");
+            catchUpFill = Element("progress-fill");
+            bar.Add(catchUpFill);
+            panel.Add(bar);
+            catchUpDay = Text("", "body-text");
+            panel.Add(catchUpDay);
+            catchUpScreen.Add(panel);
+            root.Add(catchUpScreen);
+            Show(catchUpScreen, false);
+        }
+
+        /// <summary>Shows the catch-up popup. <paramref name="awayRealSeconds"/> is shown as dd:hh:mm.</summary>
+        public void ShowCatchUp(string playerName, double awayRealSeconds)
+        {
+            var away = TimeSpan.FromSeconds(Math.Max(0, awayRealSeconds));
+            catchUpTitle.text = $"{playerName} has been away for {(int)away.TotalDays:00}:{away.Hours:00}:{away.Minutes:00}, catching up to current!";
+            ShowCatchUpProgress(1, 1, 0);
+            Show(catchUpScreen, true);
+        }
+
+        /// <summary>Which day is being simulated, of how many, and how far along it all is (0 to 1, for the bar).</summary>
+        public void ShowCatchUpProgress(int day, int days, double fraction)
+        {
+            SetText(catchUpDay, $"Simulating day {day:N0}/{days:N0}");
+            catchUpFill.style.width = Length.Percent((float)(100 * Math.Max(0, Math.Min(1, fraction))));
+        }
+
+        public void HideCatchUp() => Show(catchUpScreen, false);
+
         /// <summary>Per-frame UI animation (fading the toast).</summary>
         public void Tick(float dt)
         {

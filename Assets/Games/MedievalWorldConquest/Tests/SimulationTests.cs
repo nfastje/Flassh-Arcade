@@ -138,6 +138,24 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual("2h 14m", World.FormatDuration(2 * 3600 + 14 * 60));
             Assert.AreEqual("3d 4h", World.FormatDuration(3 * World.SecondsPerDay + 4 * 3600));
         }
+
+        [Test]
+        public void VillagesAreListedByNameAsPeopleReadThem()
+        {
+            var names = new List<string> { "004. North", "001. Home", "Village 10", "002. Farm", "village 2", "003. Mine" };
+            names.Sort(World.CompareNames);
+            CollectionAssert.AreEqual(new[] { "001. Home", "002. Farm", "003. Mine", "004. North", "village 2", "Village 10" }, names);
+
+            var world = World.CreateNew(new WorldSettings { Seed = 3, Speed = 1f, RivalDensity = 0 });
+            var first = world.PlayerVillage;
+            var second = world.Villages.First(v => v.IsBarbarian);
+            second.OwnerId = first.OwnerId;
+            world.AdvanceTo(world.Now + 1); // (the owner index catches up)
+            Assert.IsTrue(world.RenameVillage(first, "002. Old home"));
+            Assert.IsTrue(world.RenameVillage(second, "001. New"));
+            CollectionAssert.AreEqual(new[] { second, first }, world.HumanVillagesByName(), "a new name moves it");
+            CollectionAssert.AreEqual(new[] { first, second }, world.HumanVillages(), "(oldest first otherwise)");
+        }
     }
 
     public class SaveGameTests

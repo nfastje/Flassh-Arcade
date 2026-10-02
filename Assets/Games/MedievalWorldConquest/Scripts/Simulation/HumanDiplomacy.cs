@@ -148,6 +148,8 @@ namespace MedievalWorldConquest.Simulation
                     var theirs = FindTribe(m.A);
                     if (mine == null || theirs == null || mine.LeaderId != human.Id) return false;
                     if ((RelationKind)m.B == RelationKind.Ally && !CanAlly(mine, theirs)) return false;
+                    // (A peace offer only means something while the war is still on.)
+                    if ((RelationKind)m.B == RelationKind.Neutral && Relation(mine, theirs) != RelationKind.Enemy) return false;
                     SetRelation(mine, theirs, (RelationKind)m.B);
                     CheckVictory();
                     return true;
@@ -157,7 +159,8 @@ namespace MedievalWorldConquest.Simulation
 
         /// <summary>
         /// The human, leading a tribe, changes how it stands with another: war is declared at once, and pacts ended
-        /// at once; a pact offered is answered by the other tribe's leader at the next tick.
+        /// at once; peace, a pact or an alliance is offered, and the other tribe's leader answers by message.
+        /// Returns whether the change was made.
         /// </summary>
         public bool ProposeRelation(Tribe other, RelationKind kind)
         {
@@ -165,6 +168,7 @@ namespace MedievalWorldConquest.Simulation
             var mine = TribeOf(human);
             if (mine == null || other == null || other == mine || mine.LeaderId != human.Id) return false;
             var now = Relation(mine, other);
+            if (kind == RelationKind.Neutral && now == RelationKind.Enemy) return OfferPeace(mine, other);
             if (kind == RelationKind.Enemy || kind == RelationKind.Neutral)
             {
                 SetRelation(mine, other, kind);
@@ -180,6 +184,140 @@ namespace MedievalWorldConquest.Simulation
                     : human.Reputation < -20 ? "Your word is worth nothing to us." : Pick(6, "We decline.", "Not yet.", "We don't need you."), tribeId: other.Id);
             CheckVictory();
             return yes;
+        }
+
+        /// <summary>How long a tribe that turned down the human's peace offer won't hear another (game seconds).</summary>
+        public const double PeaceOfferCooldown = SecondsPerDay;
+
+        /// <summary>When the human's tribe may next offer peace to a tribe it's at war with (now or earlier: it may).</summary>
+        public double NextPeaceOffer(Tribe mine, Tribe other)
+        {
+            var r = mine != null && other != null ? FindRelation(mine.Id, other.Id) : null;
+            return r == null || r.PeaceOfferedAt <= 0 ? Now : r.PeaceOfferedAt + PeaceOfferCooldown;
+        }
+
+        /// <summary>The human offers peace to a tribe at war with theirs: its leader weighs it, and says why.</summary>
+        bool OfferPeace(Tribe mine, Tribe other)
+        {
+            var r = FindRelation(mine.Id, other.Id);
+            if (r == null || NextPeaceOffer(mine, other) > Now) return false;
+            r.PeaceOfferedAt = Now;
+            var (yes, why) = WeighPeace(other, mine);
+            if (yes) SetRelation(mine, other, RelationKind.Neutral);
+            Write(MessageKind.Note, FindPlayer(other.LeaderId), yes ? $"Peace with {other.Name}" : $"Your peace offer to {other.Name}", why, tribeId: other.Id);
+            return yes;
+        }
+
+        /// <summary>
+        /// Whether a tribe would rather end its war with another, from its own point of view, and the main reason
+        /// why (in its leader's words). For peace: losing the war (villages taken from it, more troops lost),
+        /// facing a stronger tribe, a long war, other wars to fight (above all against a common enemy), living far
+        /// apart, a peaceable leader. Against: winning it, competing for the same land, a war just begun, a warlike
+        /// leader, an enemy who breaks its word, or one whose side is close to winning the world. Across the factions
+        /// of a split realm, there's no peace.
+        /// </summary>
+        public (bool yes, string why) WeighPeace(Tribe self, Tribe other)
+        {
+            var r = FindRelation(self.Id, other.Id);
+            if (r == null || r.Kind != RelationKind.Enemy) return (true, "We aren't at war.");
+            var leader = FindPlayer(self.LeaderId);
+            var otherLeader = FindPlayer(other.LeaderId);
+            if (FactionsFormed && self.FactionId >= 0 && other.FactionId >= 0 && self.FactionId != other.FactionId)
+                return (false, "The realm is split, and you stand on the other side. There will be no peace until it's decided.");
+            if (otherLeader != null && otherLeader.IsHuman && otherLeader.Reputation < -20)
+                return (false, "Your word is worth nothing to us. We'll keep fighting.");
+
+            bool selfIsA = self.Id == r.A;
+            int taken = selfIsA ? r.TakenByA : r.TakenByB, lost = selfIsA ? r.TakenByB : r.TakenByA;
+            long troopsLost = selfIsA ? r.LostByA : r.LostByB, troopsKilled = selfIsA ? r.LostByB : r.LostByA;
+            int sSelf = Math.Max(1, TribeStrength(self).points), sOther = Math.Max(1, TribeStrength(other).points);
+            var (sx, sy) = TribeCenter(self);
+            var (ox, oy) = TribeCenter(other);
+            double distance = Math.Sqrt((sx - ox) * (sx - ox) + (sy - oy) * (sy - oy));
+            double days = (Now - r.Since) / SecondsPerDay;
+
+            // Each reason pulls for peace (+) or against it (-); the strongest one is what the leader says.
+            var reasons = new List<(double weight, string words)>();
+            int villages = lost - taken;
+            if (villages != 0)
+                reasons.Add((Math.Max(-0.6, Math.Min(0.6, 0.15 * villages)), villages > 0
+                    ? $"You've taken {lost} of our villages. Enough blood has been spilled."
+                    : $"We've taken {taken} of your villages and we're not finished. Why would we stop now?"));
+            if (troopsLost + troopsKilled > 500)
+            {
+                double ratio = Math.Log((troopsLost + 1000.0) / (troopsKilled + 1000.0));
+                reasons.Add((Math.Max(-0.4, Math.Min(0.4, 0.4 * ratio)), ratio > 0
+                    ? "Our armies have bled more than yours. We'll take peace."
+                    : "Your armies break on ours. Peace would only save you."));
+            }
+            double strength = Math.Log((double)sOther / sSelf, 2);
+            if (Math.Abs(strength) > 0.3)
+                reasons.Add((Math.Max(-0.3, Math.Min(0.3, 0.3 * strength)), strength > 0
+                    ? "You're stronger than we'd like. Peace suits us."
+                    : "We're stronger than you, and we both know it."));
+            if (distance < 15) reasons.Add((-0.25, "You sit on land we mean to have."));
+            else if (distance > 35) reasons.Add((0.15, "Your lands are far from ours. There's little to fight over."));
+            Tribe busy = null, common = null;
+            foreach (var t in ActiveTribes())
+            {
+                if (t == self || t == other || Relation(self, t) != RelationKind.Enemy) continue;
+                if (Relation(other, t) == RelationKind.Enemy) common = t;
+                else if (busy == null || TribeStrength(t).points > TribeStrength(busy).points) busy = t;
+            }
+            if (common != null) reasons.Add((0.35, $"We have a common enemy in {common.Name}. Let's turn on them instead."));
+            if (busy != null) reasons.Add((0.25, $"Our real quarrel is with {busy.Name}. Peace with you suits us."));
+            if (days < 1) reasons.Add((-0.3, "This war has barely begun."));
+            else if (days > 5) reasons.Add((Math.Min(0.3, 0.3 * (days - 5) / 25), "This war has gone on long enough."));
+            if (leader != null && Warlike(leader)) reasons.Add((-0.15, "Our warriors are still thirsty."));
+            else if (leader != null && leader.Personality == AiPersonality.Defender) reasons.Add((0.15, "We never wanted this war."));
+            if (BlocShare(other) >= BlocFearShare) reasons.Add((-0.4, "Your side is close to ruling the realm. We won't help you get there."));
+
+            double score = (TribeRandom(self.Id * 31 + other.Id, (int)(Now / SecondsPerDay)) - 0.5) * 0.3;
+            foreach (var (weight, _) in reasons) score += weight;
+            bool yes = score > PeaceThreshold;
+            string why = null;
+            double best = 0;
+            foreach (var (weight, words) in reasons)
+                if ((yes ? weight : -weight) > best)
+                {
+                    best = yes ? weight : -weight;
+                    why = words;
+                }
+            why ??= yes ? "Very well. Peace." : "We're not ready for peace.";
+            return (yes, (yes ? "We accept. " : "We refuse. ") + why);
+        }
+
+        /// <summary>How much a tribe's reasons must favor peace for it to make peace.</summary>
+        const double PeaceThreshold = 0.2;
+
+        /// <summary>Records troops lost in a battle between tribes at war, in their war's ledger.</summary>
+        void NoteWarLosses(int attacker, int attackerLost, int defender, int defenderLost)
+        {
+            var r = WarBetween(attacker, defender);
+            if (r == null) return;
+            bool attackerIsA = TribeOf(attacker).Id == r.A;
+            if (attackerIsA) { r.LostByA += attackerLost; r.LostByB += defenderLost; }
+            else { r.LostByB += attackerLost; r.LostByA += defenderLost; }
+        }
+
+        /// <summary>Records a village taken by one tribe from another it's at war with.</summary>
+        void NoteWarConquest(int winner, int loser)
+        {
+            var r = WarBetween(winner, loser);
+            if (r == null) return;
+            if (TribeOf(winner).Id == r.A) r.TakenByA++;
+            else r.TakenByB++;
+        }
+
+        /// <summary>The war between two players' tribes, if they're at war (on a diplomacy world).</summary>
+        TribeRelation WarBetween(int playerA, int playerB)
+        {
+            if (!Diplomacy || playerA < 0 || playerB < 0) return null;
+            var a = TribeOf(playerA);
+            var b = TribeOf(playerB);
+            if (a == null || b == null || a == b) return null;
+            var r = FindRelation(a.Id, b.Id);
+            return r != null && r.Kind == RelationKind.Enemy ? r : null;
         }
 
         /// <summary>How likely a tribe is to accept a pact with another.</summary>

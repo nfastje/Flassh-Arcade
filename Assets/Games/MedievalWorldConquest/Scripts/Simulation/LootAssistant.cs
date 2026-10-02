@@ -40,6 +40,12 @@ namespace MedievalWorldConquest.Simulation
         public int Template;
         /// <summary>Why the cycle stopped by itself (empty if it didn't).</summary>
         public string Stopped = "";
+
+        /// <summary>
+        /// The report of the player's latest attack on the village, linked from the Loot Assistant. The only copy
+        /// of a cycle's routine raids (which stay out of the report list); see <see cref="World.HasReport"/>.
+        /// </summary>
+        public BattleReport LatestReport;
     }
 
     /// <summary>
@@ -183,7 +189,8 @@ namespace MedievalWorldConquest.Simulation
         {
             var t = LootTargetFor(villageId);
             var report = LatestScouting(villageId);
-            bool noted = t != null && t.ScoutedAt >= 0 && t.ScoutedLevels != null;
+            // (A list that was never filled comes back from a save empty rather than missing.)
+            bool noted = t != null && t.ScoutedAt >= 0 && t.ScoutedLevels != null && t.ScoutedLevels.Length > 0;
             if (report != null && (!noted || report.Time > t.ScoutedAt))
             {
                 seenAt = report.Time;
@@ -364,19 +371,22 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>
-        /// Notes how one of the player's attacks went, for the Loot Assistant: the result, the haul, and what any
-        /// scouts saw. A cycle whose raid was beaten or lost more than a tenth of its troops stops.
+        /// Notes how one of the player's attacks went, for the Loot Assistant: the result, the haul, what any
+        /// scouts saw, and the report itself. A cycle whose raid was beaten or lost more than a tenth of its troops
+        /// stops. Returns whether it was a routine raid (a cycle's, won without a loss), which stays out of the list.
         /// </summary>
-        void NoteRaid(Command command, Village target, BattleReport report)
+        bool NoteRaid(Command command, Village target, BattleReport report)
         {
             var t = LootTargetFor(target.Id, true);
+            t.LatestReport = report;
             int sent = Total(report.AttackerSent), lost = Total(report.AttackerLost);
             t.LastRaidAt = Now;
             t.LastResult = !report.AttackerWon || lost >= sent ? RaidResult.Defeat : lost > 0 ? RaidResult.Losses : RaidResult.Clean;
             t.LastLoot = report.Loot;
             int hauled = report.Loot.Wood + report.Loot.Clay + report.Loot.Iron;
             t.FullHaul = report.AttackerWon && report.LootCapacity > 0 && hauled >= report.LootCapacity;
-            if (report.Scouted && report.ScoutedLevels != null)
+            // (Template C needs the stores and the warehouse, so only a look that saw the buildings counts.)
+            if (report.SawBuildings && report.ScoutedLevels != null && report.ScoutedLevels.Length > 0)
             {
                 t.ScoutedAt = Now;
                 t.ScoutedResources = report.ScoutedResources;
@@ -388,6 +398,7 @@ namespace MedievalWorldConquest.Simulation
                 if (t.LastResult == RaidResult.Defeat) Stop(t, "the last raid was beaten.");
                 else if (lost > sent * CycleLossLimit) Stop(t, $"the last raid lost {lost:N0} of {sent:N0} troops.");
             }
+            return report.Routine;
         }
 
         static void Stop(LootTarget t, string why)

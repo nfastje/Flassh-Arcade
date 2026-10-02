@@ -40,7 +40,7 @@ namespace MedievalWorldConquest
             public VisualElement Dot;
             public Label Full, Distance, LastRaid, Loot, Wall, Expected;
             public Button[] Send = new Button[3];
-            public Button Cycle;
+            public Button Cycle, Report;
         }
 
         class CycleRow
@@ -321,6 +321,16 @@ namespace MedievalWorldConquest
                     nextRefresh = 0;
                 }, "btn", "btn--small", "count-btn");
                 line.Add(row.Cycle);
+                // The latest raid's report (a cycle's routine raids are only kept here, not in the report list).
+                // (In a fixed-width cell, so the link's underline is only as long as its text.)
+                var reportCell = Element("loot-report-cell");
+                row.Report = Link("Latest report", () =>
+                {
+                    var t = lastWorld?.LootTargetFor(id);
+                    if (t != null && World.HasReport(t)) links.OpenReport(t.LatestReport.Id);
+                });
+                reportCell.Add(row.Report);
+                line.Add(reportCell);
                 farmRows.Add(line);
                 farms.Add(row);
             }
@@ -384,6 +394,10 @@ namespace MedievalWorldConquest
                 : !string.IsNullOrEmpty(t?.Stopped) ? $"The cycle stopped: {t.Stopped} Press to start it again."
                 : $"Raid it again each time the raiders get home, with template {Letters[cycleTemplate]}";
             row.Cycle.EnableInClassList("loot-stopped", !cycling && !string.IsNullOrEmpty(t?.Stopped));
+            // (Hidden rather than removed, so the rows stay lined up.)
+            bool report = t != null && World.HasReport(t);
+            row.Report.style.visibility = report ? Visibility.Visible : Visibility.Hidden;
+            if (report) row.Report.tooltip = $"{ReportsPanel.Title(t.LatestReport)}\n{Real(world, world.Now - t.LatestReport.Time)} ago";
         }
 
         static string Describe(int[] troops)

@@ -51,12 +51,14 @@ namespace MedievalWorldConquest
         // when what it shows changes: rebuilding replaces its buttons, and a click that starts on the old button
         // and ends on the new one does nothing.
         readonly List<(Label label, Func<string> text)> live = new List<(Label, Func<string>)>();
+        readonly List<(SteadyNumber number, Func<string> text, Func<bool> full)> liveNumbers = new List<(SteadyNumber, Func<string>, Func<bool>)>();
 
         /// <summary>Empties the window for rebuilding.</summary>
         protected void Clear()
         {
             body.Clear();
             live.Clear();
+            liveNumbers.Clear();
         }
 
         /// <summary>A line of text kept up to date every frame.</summary>
@@ -70,6 +72,41 @@ namespace MedievalWorldConquest
         protected void RefreshLive()
         {
             foreach (var (label, text) in live) SetText(label, text());
+            foreach (var (number, text, full) in liveNumbers)
+            {
+                number.SetText(text());
+                if (full != null) number.EnableInClassList("stores-value--full", full());
+            }
+        }
+
+        /// <summary>A number kept up to date every frame, its digits steady (see <see cref="SteadyNumber"/>); red while <paramref name="full"/>.</summary>
+        protected SteadyNumber LiveNumber(Func<string> text, Func<bool> full = null)
+        {
+            var number = new SteadyNumber("stores-value");
+            number.SetText(text());
+            liveNumbers.Add((number, text, full));
+            return number;
+        }
+
+        /// <summary>A village's stores and warehouse as on the top bar: an icon and a steady number each.</summary>
+        protected VisualElement StoresLine(Village v)
+        {
+            var line = Element("stores-line");
+            foreach (var r in new[] { ResourceType.Wood, ResourceType.Clay, ResourceType.Iron })
+            {
+                var res = r;
+                var chip = Element("stores-chip");
+                chip.tooltip = r.ToString();
+                chip.Add(Icons.Element(Icons.Resource(r), 18));
+                chip.Add(LiveNumber(() => $"{Math.Floor(v.Stock(res)):N0}", () => v.Stock(res) >= v.StorageCapacity));
+                line.Add(chip);
+            }
+            var storage = Element("stores-chip");
+            storage.tooltip = "Warehouse capacity";
+            storage.Add(Icons.Element(Icons.Storage, 18));
+            storage.Add(LiveNumber(() => $"{v.StorageCapacity:N0}"));
+            line.Add(storage);
+            return line;
         }
 
         /// <summary>A line of text with link buttons in it: pieces are strings (plain) or (text, action) pairs (links).</summary>
@@ -153,7 +190,7 @@ namespace MedievalWorldConquest
             if (owner != null && !mine && world.AreFriendly(world.HumanPlayer.Id, owner.Id))
                 body.Add(Text(world.TribeOf(world.HumanPlayer) == ownerTribe ? "A tribe mate: attacking them gets you thrown out of the tribe."
                     : "Your tribe has a pact with theirs: attacking them breaks it.", "row-info", "protection-note"));
-            body.Add(Line($"Location: ({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}  ·  {world.TerrainAt(v.X, v.Y)}" + (home != null && home != v ? $"  ·  {World.Distance(home, v):0.0} fields from {home.Name}" : "")));
+            body.Add(Line($"Location: ({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}" + (home != null && home != v ? $"  ·  {World.Distance(home, v):0.0} fields from {home.Name}" : "")));
             body.Add(Line($"Points: {v.Points:N0}" + (mine && v.Loyalty < World.MaxLoyalty ? $"  ·  loyalty {Math.Floor(v.Loyalty):0}" : "")));
             if (owner != null && !mine && world.IsProtected(owner.Id))
                 body.Add(Live(() => $"Under beginner protection for {Real(world, Math.Max(0, owner.ProtectedUntil - world.Now))}: it can't be attacked yet.", "row-info", "protection-note"));
@@ -196,7 +233,13 @@ namespace MedievalWorldConquest
                 for (int i = 0; i < about.Count && i < 8; i++)
                 {
                     var r = about[i];
-                    body.Add(Line(Clock(r.Time) + "  ", (ReportsPanel.Title(r), (Action)(() => links.OpenReport(r.Id)))));
+                    // On one line: a long title is cut off at its end, never its start.
+                    var line = Element("link-line", "report-link-line");
+                    line.Add(Text(Clock(r.Time) + "  ", "row-info", "link-text", "report-link-time"));
+                    var link = Link(ReportsPanel.Title(r), () => links.OpenReport(r.Id), "report-link");
+                    link.tooltip = link.text;
+                    line.Add(link);
+                    body.Add(line);
                 }
             }
         }
@@ -207,9 +250,7 @@ namespace MedievalWorldConquest
             body.Add(Text("Troops at home", "heading"));
             body.Add(TroopIcons(v.Troops));
             body.Add(Text("Resources", "heading"));
-            var stores = Element("link-line");
-            stores.Add(Live(() => $"Wood {Math.Floor(v.Stock(ResourceType.Wood)):N0} · clay {Math.Floor(v.Stock(ResourceType.Clay)):N0} · iron {Math.Floor(v.Stock(ResourceType.Iron)):N0} (holds {v.StorageCapacity:N0})", "row-info", "link-text"));
-            body.Add(stores);
+            body.Add(StoresLine(v));
             body.Add(Text("Buildings", "heading"));
             body.Add(Line(BuildingSummary(v.Levels)));
         }

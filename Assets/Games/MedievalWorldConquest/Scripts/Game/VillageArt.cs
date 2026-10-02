@@ -15,7 +15,7 @@ namespace MedievalWorldConquest
         {
             grass = clearing = stake = tree = glow = reinforcedStake = stoneWall = mapHut = patch = null;
             System.Array.Clear(mapVillages, 0, mapVillages.Length);
-            mapDot = mapRing = pixel = null;
+            mapDot = pixel = null;
             material = null;
         }
 
@@ -135,7 +135,7 @@ namespace MedievalWorldConquest
         /// <summary>How many sizes of village the world map shows.</summary>
         public const int MapVillageTiers = 6;
         static readonly Sprite[] mapVillages = new Sprite[MapVillageTiers * 2];
-        static Sprite mapDot, mapRing;
+        static Sprite mapDot;
 
         /// <summary>
         /// A village on the world map, one field (1 unit) across, pivot in the center, in full color like Tribal
@@ -175,15 +175,6 @@ namespace MedievalWorldConquest
             float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(8f, 8f));
             if (d > 7.5f) return Color.clear;
             return d > 5.8f ? new Color(0.12f, 0.1f, 0.08f, 1f) : Color.white;
-        });
-
-        /// <summary>A rounded-square outline one field across, for marking the player's own villages (tinted).</summary>
-        public static Sprite MapRing => mapRing != null ? mapRing : mapRing = Make("MapRing", 48, 48, 48f, new Vector2(0.5f, 0.5f), TextureWrapMode.Clamp, (x, y) =>
-        {
-            // Distance from a rounded square's edge (a superellipse).
-            float u = Mathf.Abs(x + 0.5f - 24f) / 23f, v = Mathf.Abs(y + 0.5f - 24f) / 23f;
-            float d = Mathf.Pow(Mathf.Pow(u, 4) + Mathf.Pow(v, 4), 0.25f);
-            return d <= 1f && d > 0.88f ? Color.white : Color.clear;
         });
 
         static readonly Color Dirt = new Color(0.78f, 0.66f, 0.45f), Palisade = new Color(0.52f, 0.34f, 0.18f);

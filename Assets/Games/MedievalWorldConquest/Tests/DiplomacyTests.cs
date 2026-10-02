@@ -107,6 +107,71 @@ namespace MedievalWorldConquest.Tests
             Assert.Less(human.Reputation, 0);
         }
 
+        /// <summary>The human's tribe at war with a lord's (declared just now).</summary>
+        static (World world, Tribe mine, Tribe theirs, TribeRelation war) AtWar()
+        {
+            var world = NewWorld();
+            var lord = Lords(world).First(p => p.Personality != AiPersonality.Noob);
+            var mine = world.FoundTribe(world.HumanPlayer, "Mine", "MI");
+            var theirs = world.FoundTribe(lord, "Theirs", "TH");
+            Assert.IsTrue(world.ProposeRelation(theirs, RelationKind.Enemy));
+            var war = world.Relations.Single(r => r.Kind == RelationKind.Enemy && (r.A == theirs.Id || r.B == theirs.Id));
+            return (world, mine, theirs, war);
+        }
+
+        [Test]
+        public void PeaceIsOfferedNotImposed()
+        {
+            var (world, mine, theirs, _) = AtWar();
+            int messages = world.Messages.Count;
+            Assert.IsFalse(world.ProposeRelation(theirs, RelationKind.Neutral), "a war just declared isn't over that easily");
+            Assert.AreEqual(RelationKind.Enemy, world.Relation(mine, theirs));
+            Assert.AreEqual(messages + 1, world.Messages.Count, "their leader says why");
+            StringAssert.StartsWith("We refuse.", world.Messages.Last().Body);
+            Assert.Greater(world.NextPeaceOffer(mine, theirs), world.Now, "and won't hear another offer for a while");
+            Assert.IsFalse(world.ProposeRelation(theirs, RelationKind.Neutral));
+            Assert.AreEqual(messages + 1, world.Messages.Count);
+        }
+
+        [Test]
+        public void ATribeLosingTheWarTakesPeace()
+        {
+            var (world, mine, theirs, war) = AtWar();
+            // Ten days in, they've lost four villages to us and far more troops.
+            war.Since = world.Now - 10 * World.SecondsPerDay;
+            if (war.A == theirs.Id) { war.TakenByB = 4; war.LostByA = 20000; war.LostByB = 2000; }
+            else { war.TakenByA = 4; war.LostByB = 20000; war.LostByA = 2000; }
+            var (yes, why) = world.WeighPeace(theirs, mine);
+            Assert.IsTrue(yes, why);
+            Assert.IsTrue(world.ProposeRelation(theirs, RelationKind.Neutral));
+            Assert.AreEqual(RelationKind.Neutral, world.Relation(mine, theirs));
+            StringAssert.StartsWith("We accept.", world.Messages.Last().Body);
+        }
+
+        [Test]
+        public void ATribeWinningTheWarFightsOn()
+        {
+            var (world, mine, theirs, war) = AtWar();
+            war.Since = world.Now - 10 * World.SecondsPerDay;
+            if (war.A == theirs.Id) { war.TakenByA = 4; war.LostByB = 20000; war.LostByA = 2000; }
+            else { war.TakenByB = 4; war.LostByA = 20000; war.LostByB = 2000; }
+            var (yes, why) = world.WeighPeace(theirs, mine);
+            Assert.IsFalse(yes);
+            StringAssert.Contains("4 of your villages", why, "the main reason is given");
+        }
+
+        [Test]
+        public void TheWarLedgerCountsBattles()
+        {
+            var (world, _, theirs, war) = AtWar();
+            var lordVillage = HomeOf(world, world.FindPlayer(theirs.LeaderId));
+            lordVillage.Troops[(int)UnitType.Axeman] = 500;
+            world.PlayerVillage.Troops[(int)UnitType.Spearman] = 100;
+            var attack = world.Send(lordVillage, world.PlayerVillage, Army(UnitType.Axeman, 500), CommandKind.Attack);
+            world.AdvanceTo(attack.ArriveTime);
+            Assert.Greater(war.LostByA + war.LostByB, 0, "the battle is in the ledger");
+        }
+
         [Test]
         public void BreakingAPactMakesWar()
         {

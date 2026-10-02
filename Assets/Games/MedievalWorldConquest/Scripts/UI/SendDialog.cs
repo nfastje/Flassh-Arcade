@@ -10,7 +10,8 @@ namespace MedievalWorldConquest
     /// The dialog for sending troops from the player's village to another: pick how many of each unit, see how long
     /// the march takes and how strong the attack is, then attack (or support one of the player's own villages).
     /// With two noblemen or more, an attack goes as a noble train: one attack per nobleman (only one in an attack
-    /// sways the village), landing one straight after another.
+    /// sways the village), landing one straight after another. Everything is always there (units that aren't home,
+    /// and the catapult and noble train options when they don't apply, grayed out), so nothing moves as troops are chosen.
     /// </summary>
     public class SendDialog
     {
@@ -22,7 +23,7 @@ namespace MedievalWorldConquest
         readonly VisualElement[] rows = new VisualElement[Units.Count];
         readonly IntegerField[] amounts = new IntegerField[Units.Count];
         readonly Button[] allLinks = new Button[Units.Count];
-        readonly Label title, summary, reason, nothingHome;
+        readonly Label title, summary, reason;
         readonly Button attack, support;
         readonly VisualElement catapultRow, trainRow;
         readonly DropdownField catapultTarget, trainEscort;
@@ -43,10 +44,14 @@ namespace MedievalWorldConquest
             quick.Add(ButtonWith("None", () => Array.Clear(selected, 0, selected.Length), "btn", "btn--small", "count-btn"));
             panel.Add(quick);
 
-            nothingHome = Text("You have no troops at home to send.", "row-reason");
-            panel.Add(nothingHome);
 
-            // As in Tribal Wars: for each unit, a box to type how many, and links for all of them or none.
+            // As in Tribal Wars: for each unit, a box to type how many, and links for all of them or none; in two
+            // columns, foot and siege on the left, horse and noblemen on the right.
+            var grid = Element("send-grid");
+            var columns = new[] { Element("send-column"), Element("send-column") };
+            grid.Add(columns[0]);
+            grid.Add(columns[1]);
+            panel.Add(grid);
             foreach (var type in Units.InDisplayOrder)
             {
                 var u = Units.Get(type);
@@ -67,10 +72,12 @@ namespace MedievalWorldConquest
                 // One more (a lone scout for a raid, say) without typing; never more than are home.
                 row.Add(Link("+1", () => selected[index] = selected[index] == int.MaxValue ? int.MaxValue : selected[index] + 1, "send-plus"));
                 rows[index] = row;
-                panel.Add(row);
+                bool horse = type == UnitType.Scout || type == UnitType.LightCavalry || type == UnitType.MountedArcher
+                             || type == UnitType.HeavyCavalry || type == UnitType.Nobleman;
+                columns[horse ? 1 : 0].Add(row);
             }
 
-            // Which building the catapults aim at (only asked when catapults are going).
+            // Which building the catapults aim at (grayed out unless catapults are going).
             catapultRow = Element("send-row", "catapult-row");
             catapultRow.Add(Text("Catapults aim at", "row-title", "send-name"));
             var names = new List<string>();
@@ -80,7 +87,7 @@ namespace MedievalWorldConquest
             catapultRow.Add(catapultTarget);
             panel.Add(catapultRow);
 
-            // How a noble train shares out the troops (only asked when two or more noblemen are going).
+            // How a noble train shares out the troops (grayed out unless two or more noblemen are going).
             trainRow = Element("send-row", "catapult-row");
             trainRow.Add(Text("Noble train", "row-title", "send-name"));
             trainEscort = new DropdownField(new List<string> { "Minimal escort", "Troops split evenly" }, 0);
@@ -91,7 +98,7 @@ namespace MedievalWorldConquest
 
             summary = Text("", "row-info", "send-summary");
             panel.Add(summary);
-            reason = Text("", "row-reason");
+            reason = Text("", "row-reason", "send-reason");
             panel.Add(reason);
 
             var actions = Element("option-row");
@@ -190,13 +197,12 @@ namespace MedievalWorldConquest
             {
                 int atHome = home.TroopCount((UnitType)i);
                 selected[i] = Math.Max(0, Math.Min(selected[i], atHome)); // never more than are home
-                Show(rows[i], atHome > 0);
+                rows[i].SetEnabled(atHome > 0);
                 any |= atHome > 0;
                 SetText(allLinks[i], $"({atHome:N0})");
                 // What's typed stays as typed (unless it's more than there are); the links and buttons show here.
                 if (amounts[i].value != selected[i]) amounts[i].SetValueWithoutNotify(selected[i]);
             }
-            Show(nothingHome, !any);
 
             var attackCheck = world.CheckSend(home, target, selected, CommandKind.Attack);
             var supportCheck = world.CheckSend(home, target, selected, CommandKind.Support);
@@ -211,16 +217,17 @@ namespace MedievalWorldConquest
                     InTimeLine(world, target, supportCheck));
 
             bool own = target.OwnerId == home.OwnerId;
-            Show(trainRow, !own && selected[(int)UnitType.Nobleman] >= 2);
+            trainRow.SetEnabled(!own && selected[(int)UnitType.Nobleman] >= 2);
             Show(attack, !own);
             attack.SetEnabled(attackCheck.Status == SendStatus.Ok);
             support.SetEnabled(supportCheck.Status == SendStatus.Ok);
-            Show(catapultRow, !own && selected[(int)UnitType.Catapult] > 0);
+            catapultRow.SetEnabled(!own && selected[(int)UnitType.Catapult] > 0);
             var lord = world.FindPlayer(target.OwnerId);
             bool friendly = !own && world.AreFriendly(home.OwnerId, target.OwnerId);
             bool mate = friendly && world.TribeOf(home.OwnerId) == world.TribeOf(target.OwnerId);
             SetText(reason,
-                attackCheck.Status == SendStatus.SameVillage ? "That's the village they're in."
+                !any ? "You have no troops at home to send."
+                : attackCheck.Status == SendStatus.SameVillage ? "That's the village they're in."
                 : friendly && attackCheck.Status == SendStatus.Ok
                     ? mate ? "Careful: this is a tribe mate. Attacking gets you thrown out of the tribe."
                            : "Careful: your tribes have a pact. Attacking breaks it and means war."

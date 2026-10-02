@@ -26,8 +26,8 @@ namespace MedievalWorldConquest
         readonly Dictionary<UnitType, (VisualElement row, Label home, IntegerField amount, Button max, Label cost, Button recruit, Label reason)> rows =
             new Dictionary<UnitType, (VisualElement, Label, IntegerField, Button, Label, Button, Label)>();
         readonly int[] counts = new int[Units.Count];
-        readonly VisualElement coinBox;
-        readonly Label coinSummary, coinReason;
+        readonly VisualElement coinBox, coinNextFill;
+        readonly Label coinCount, coinFree, coinFreeLabel, coinNextText, coinNextSlot, coinReason;
         readonly CostLine coinCost;
         readonly Button mintOne, mintMax;
 
@@ -54,11 +54,47 @@ namespace MedievalWorldConquest
             {
                 coinBox = Element("coin-box");
                 coinBox.Add(Text("Gold coins", "heading"));
-                coinSummary = Text("", "row-info");
-                coinBox.Add(coinSummary);
+
+                // At a glance: the coins minted, and how many more noblemen there's room for.
+                var stats = Element("coin-stats");
+                var minted = Element("coin-stat");
+                minted.tooltip = "Gold coins minted, in all";
+                minted.Add(Icons.Element(Icons.Coin, 26, "coin-stat-icon"));
+                coinCount = Text("", "coin-stat-value");
+                minted.Add(coinCount);
+                minted.Add(Text("coins", "coin-stat-label"));
+                stats.Add(minted);
+                var free = Element("coin-stat");
+                free.tooltip = "Free noble slots: how many more noblemen you can train right now";
+                free.Add(Icons.Element(Icons.Unit(UnitType.Nobleman), 26, "coin-stat-icon"));
+                coinFree = Text("", "coin-stat-value");
+                free.Add(coinFree);
+                coinFreeLabel = Text("", "coin-stat-label");
+                free.Add(coinFreeLabel);
+                stats.Add(free);
+                coinBox.Add(stats);
+
+                // How far to the next slot.
+                var next = Element("coin-next");
+                var bar = Element("progress", "coin-next-bar");
+                coinNextFill = Element("progress-fill", "coin-next-fill");
+                bar.Add(coinNextFill);
+                next.Add(bar);
+                coinNextText = Text("", "row-info", "coin-next-text");
+                next.Add(coinNextText);
+                next.Add(Icons.Element(Icons.Coin, 15, "coin-inline-icon"));
+                coinNextSlot = Text("", "row-info", "coin-next-text");
+                next.Add(coinNextSlot);
+                coinBox.Add(next);
+                coinBox.Add(Text("Each nobleman needs a free slot, and so does every village you hold beyond your first. " +
+                                 "Each slot takes one more coin than the last (1, 3, 6, 10… in all).", "row-level", "coin-hint"));
+
                 var mint = Element("build-row", "hq-row");
                 var left = Element("hq-row-name");
-                left.Add(Text("Mint a gold coin", "row-title"));
+                var title = Element("coin-mint-title");
+                title.Add(Icons.Element(Icons.Coin, 18, "coin-inline-icon"));
+                title.Add(Text("Mint a gold coin", "row-title"));
+                left.Add(title);
                 coinCost = new CostLine();
                 left.Add(coinCost.Root);
                 mint.Add(left);
@@ -75,16 +111,25 @@ namespace MedievalWorldConquest
             }
 
             // Each building: what it's training (a slot for every batch it can queue, used or free), then its units.
+            // (At the academy the other way round: its one unit first, so it's in reach without scrolling.)
             foreach (var b in buildings)
             {
+                bool recruitFirst = b == BuildingType.Academy && !combined;
+                if (recruitFirst) AddUnits(b);
                 var heading = Text("", "heading");
                 Root.Add(heading);
                 var slots = new QueueSlots(World.MaxRecruitQueue, "Cancel (refund untrained)", compact: true);
                 Root.Add(slots.Root);
                 sections[b] = (heading, slots);
-                if (!combined) Root.Add(Text("Recruit", "heading"));
-                foreach (var u in Units.TrainedAt(b)) Root.Add(UnitRow(u));
+                if (!recruitFirst) AddUnits(b);
             }
+        }
+
+        /// <summary>A building's units to recruit (under a heading of their own when it's the only building shown).</summary>
+        void AddUnits(BuildingType b)
+        {
+            if (!combined) Root.Add(Text("Recruit", "heading"));
+            foreach (var u in Units.TrainedAt(b)) Root.Add(UnitRow(u));
         }
 
         VisualElement UnitRow(UnitDef u)
@@ -153,10 +198,16 @@ namespace MedievalWorldConquest
             if (!world.Settings.GoldCoins) return;
             var human = world.HumanPlayer;
             int coins = human?.Coins ?? 0, slots = World.SlotsFor(coins), used = human == null ? 0 : world.NobleSlotsUsed(human);
-            int toNext = World.CoinsForSlots(slots + 1) - coins;
-            SetText(coinSummary,
-                $"Coins minted: {coins:N0}  ·  noble slots: {used:N0} used of {slots:N0}  ·  {toNext:N0} more coin{(toNext == 1 ? "" : "s")} for the next slot.\n" +
-                "Each nobleman needs a free slot, and so does every village you hold beyond your first. Each slot takes one more coin than the last (1, 3, 6, 10… in all).");
+            int free = Math.Max(0, slots - used);
+            SetText(coinCount, $"{coins:N0}");
+            SetText(coinFree, $"{free:N0}");
+            SetText(coinFreeLabel, free == 1 ? "free slot" : "free slots");
+            coinFree.EnableInClassList("coin-stat-value--none", free == 0);
+            // The next slot: coins towards it out of what it costs.
+            int start = World.CoinsForSlots(slots), end = World.CoinsForSlots(slots + 1), toNext = end - coins;
+            coinNextFill.style.width = Length.Percent(100f * (coins - start) / Math.Max(1, end - start));
+            SetText(coinNextText, $"{coins - start:N0} of {end - start:N0}  ·  {toNext:N0} more");
+            SetText(coinNextSlot, $"for slot {slots + 1:N0}");
             var check = world.CheckMint(v, 1);
             coinCost.Set(world, World.CoinCost, 0);
             mintOne.SetEnabled(check.Status == MintStatus.Ok);

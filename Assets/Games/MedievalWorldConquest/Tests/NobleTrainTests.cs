@@ -57,7 +57,7 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
-        public void ATrainLandsInOrderAndTheRestTurnBackOnceItsWon()
+        public void ATrainLandsInOrderAndTheRestStayToGuardOnceItsWon()
         {
             var world = World.CreateNew(new WorldSettings { Seed = 6, Speed = 1f, RivalDensity = 0, ProtectionDays = 0 });
             var home = world.PlayerVillage;
@@ -81,8 +81,10 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(home.OwnerId, target.OwnerId, "noblemen in a row win it");
             Assert.IsFalse(world.Reports.Any(r => r.DefenderPlayerId == home.OwnerId), "nobody attacked the village once it was ours");
             Assert.Less(world.Reports.Count(r => r.Kind == ReportKind.Attack), 6, "the last got there too late to fight");
-            Assert.AreEqual(5, world.Commands.Count(c => c.Kind == CommandKind.Return && c.Troops[(int)UnitType.Nobleman] == 1),
-                "every nobleman but the one who won it heads home");
+            int returning = world.Commands.Count(c => c.Kind == CommandKind.Return && c.Troops[(int)UnitType.Nobleman] == 1);
+            int guarding = target.Supports.Sum(g => g.Troops[(int)UnitType.Nobleman]);
+            Assert.AreEqual(5, returning + guarding, "every nobleman but the one who won it is heading home or guarding it");
+            Assert.Greater(guarding, 0, "those that got there after it was won stay to guard it");
         }
     }
 }

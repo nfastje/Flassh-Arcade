@@ -59,7 +59,7 @@ namespace MedievalWorldConquest.Simulation
             army[(int)UnitType.Nobleman] = nobles;
             // (What tribe mates have seen counts too: their attacks clear the way.)
             var note = Diplomacy ? SharedSighting(lord, target.Id).note : NoteFor(lord, target.Id, false);
-            bool known = Known(note);
+            bool known = Known(note, target);
             if (target == handed)
             {
                 // Its defenders stand aside: only the villagers and the wall to get past, so each nobleman takes just
@@ -73,20 +73,36 @@ namespace MedievalWorldConquest.Simulation
                 SendTrain(v, target, party, TrainEscort.Minimal, BuildingType.Wall);
                 return;
             }
-            // The noblemen only go where the lord has seen lately (its farming scouts usually have); with no scouts
-            // at all, it trusts that a barbarian village is empty and guesses at a player's.
-            if (!known && v.TroopCount(UnitType.Scout) > 0 && !underAttack.Contains(target.Id))
+            // The noblemen only go where the lord has seen lately (its farming scouts usually have): at a player, in
+            // the last few hours, as a player may have brought in support since. With no scouts at all, it trusts
+            // that a barbarian village is empty and guesses at a player's.
+            bool fresh = known && (target.IsBarbarian || Now - note.SeenAt < NobleSightingHours * 3600);
+            int scouts = fresh || underAttack.Contains(target.Id) ? 0 : ScoutRun(lord, v, target.Id, 2, player: !target.IsBarbarian);
+            if (scouts > 0)
             {
                 var look = new int[Units.Count];
-                look[(int)UnitType.Scout] = 2;
+                look[(int)UnitType.Scout] = scouts;
                 Send(v, target, look, CommandKind.Attack);
                 return;
             }
-            var expected = known ? note.SeenTroops : target.IsBarbarian ? NoTroops : GuessDefenders(target);
+            // (A village it can't see into is judged by a cautious guess; one seen a while ago, by half as much again.)
+            var expected = known ? note.SeenTroops : target.IsBarbarian ? NoTroops : GuessDefenders(lord, target);
+            if (known && !fresh)
+            {
+                expected = (int[])expected.Clone();
+                for (int i = 0; i < expected.Length; i++) expected[i] = (int)Math.Ceiling(expected[i] * 1.5);
+            }
             int wall = known ? note.SeenWall : GuessWall(target);
             // The noblemen have to live through it, so the lord wants an easy win (less so on the tribe's target).
-            if (!Beatable(army, expected, known ? note.SeenAt : Now, wall, maxLoss: target == tribeTarget ? 0.5 : 0.35)) return;
+            if (!Beatable(army, expected, known ? note.SeenAt : Now, wall, maxLoss: target == tribeTarget ? 0.5 : 0.35))
+            {
+                // Not enough here: if the troops out raiding would make the difference, the village gathers them for it.
+                if (OffenseAway(v) > 0 && Beatable(OffenseWithRaiders(v, army), expected, known ? note.SeenAt : Now, wall, maxLoss: target == tribeTarget ? 0.5 : 0.35))
+                    Muster(v);
+                return;
+            }
             var train = SendTrain(v, target, army, TrainEscort.Minimal, BuildingType.Wall);
+            Mustered(v);
             // A noble train at a player is worth hiding among fakes.
             if (train != null && !target.IsBarbarian) MaybeFakes(lord, target);
         }
@@ -180,7 +196,18 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>Whether the lord's sighting of a village's defenders is recent enough to act on.</summary>
-        bool Known(AiNote note) => note != null && note.SeenAt >= 0 && note.SeenTroops != null && Now - note.SeenAt < 2 * SecondsPerDay;
+        /// <summary>
+        /// Game hours a sighting of a village's defenders stays good enough to judge an attack by: a player's only
+        /// half a day (players reinforce their villages), a barbarian village's two days.
+        /// </summary>
+        public const double PlayerSightingHours = 12, BarbarianSightingHours = 48;
+
+        /// <summary>Game hours a sighting stays good enough to send noblemen at a player on (older, and scouts look again first).</summary>
+        public const double NobleSightingHours = 6;
+
+        bool Known(AiNote note, Village target) =>
+            note != null && note.SeenAt >= 0 && note.SeenTroops != null
+            && Now - note.SeenAt < (target.IsBarbarian ? BarbarianSightingHours : PlayerSightingHours) * 3600;
 
         /// <summary>
         /// Whether an attack beats the defenders seen at <paramref name="seenAt"/> (assumed to have grown a little since),
@@ -193,6 +220,85 @@ namespace MedievalWorldConquest.Simulation
             for (int i = 0; i < Units.Count && i < seenTroops.Length; i++) expected[i] = (int)Math.Ceiling(seenTroops[i] * growth);
             var result = Battle.Fight(offense, expected, wall, -Battle.MaxLuck);
             return result.AttackerWon && result.AttackerLossFraction < maxLoss;
+        }
+
+        /// <summary>A week after the last wait ends, a failed scouting is forgotten (the village may have changed).</summary>
+        const double ScoutMemorySeconds = 7 * SecondsPerDay;
+
+        /// <summary>Game hours a lord waits after its first failed scouting run before trying again (doubling each time, up to the most).</summary>
+        public const double ScoutWaitHours = 6, ScoutWaitMaxHours = 48;
+
+        /// <summary>
+        /// How many scouts a lord sends to look at a player's village, by the size of the village they go from (as
+        /// players do as a world goes on): one per 40 points, so about 20-25 early, 100 by mid-game and 200 or more
+        /// late (between <see cref="MinStageScouts"/> and <see cref="MaxStageScouts"/>).
+        /// </summary>
+        public static int StageScouts(Village from) => StageScouts(from.Points);
+
+        public static int StageScouts(int points) => Math.Max(MinStageScouts, Math.Min(MaxStageScouts, (int)Math.Round(points / 40.0)));
+
+        public const int MinStageScouts = 20, MaxStageScouts = 300;
+
+        /// <summary>The share of its scouts a village sends out on one look (the rest stay home against enemy scouts).</summary>
+        const double ScoutsOut = 0.8;
+
+        /// <summary>
+        /// What a lord and its tribe mates (who share their reports) have learned about scouting a village: the
+        /// scouts it takes to get through (one more than any seen there, a quarter more for growth; or what failed
+        /// runs have taught), whether a run has failed lately, and when they may try again.
+        /// </summary>
+        (int needed, bool failed, double againAt) ScoutingKnowledge(Player lord, int villageId)
+        {
+            int needed = 0;
+            bool failed = false;
+            double again = 0;
+            void Consider(Player q)
+            {
+                var n = q == null || q.IsHuman ? null : NoteFor(q, villageId, false);
+                if (n == null) return;
+                if (n.SeenAt >= 0 && n.SeenTroops != null && (int)UnitType.Scout < n.SeenTroops.Length)
+                    needed = Math.Max(needed, (int)Math.Ceiling(n.SeenTroops[(int)UnitType.Scout] * 1.25) + 1);
+                if (n.ScoutFails > 0 && Now < n.ScoutAgainAt + ScoutMemorySeconds)
+                {
+                    needed = Math.Max(needed, n.ScoutsNeeded);
+                    failed = true;
+                    again = Math.Max(again, n.ScoutAgainAt);
+                }
+            }
+            Consider(lord);
+            var tribe = Diplomacy ? TribeOf(lord) : null;
+            if (tribe != null)
+                foreach (int id in tribe.Members)
+                    if (id != lord.Id) Consider(FindPlayer(id));
+            return (needed, failed, again);
+        }
+
+        /// <summary>
+        /// How many scouts a lord sends from a village to look at another, or 0 if it shouldn't try: it (or a tribe
+        /// mate) is waiting after a failed run, or it can't send enough to get through. A player's village gets a
+        /// look the size of the stage of the game (<see cref="StageScouts"/>, or what the village can spare); a farm
+        /// just <paramref name="basic"/> (they seldom keep scouts). Either way, at least what's been learned it takes.
+        /// </summary>
+        public int ScoutRun(Player lord, Village from, int villageId, int basic, bool player = false)
+        {
+            var (needed, _, again) = ScoutingKnowledge(lord, villageId);
+            if (again > Now) return 0;
+            int spare = (int)(from.TroopCount(UnitType.Scout) * ScoutsOut);
+            int least = Math.Max(basic, needed);
+            int send = player ? Math.Max(least, Math.Min(StageScouts(from), spare)) : least;
+            return spare >= send ? send : 0;
+        }
+
+        /// <summary>
+        /// A cautious guess at the defenders of a village not seen lately: from its size, and twice that if scouting
+        /// it has failed (a village guarded by that many scouts is likely guarded by more than scouts).
+        /// </summary>
+        int[] GuessDefenders(Player lord, Village v)
+        {
+            var guess = GuessDefenders(v);
+            if (ScoutingKnowledge(lord, v.Id).failed)
+                for (int i = 0; i < guess.Length; i++) guess[i] *= 2;
+            return guess;
         }
 
         /// <summary>A cautious guess at a village's defenders from its points, for lords with no scouts.</summary>
@@ -227,17 +333,33 @@ namespace MedievalWorldConquest.Simulation
                     note.SeenWall = target.Level(BuildingType.Wall);
                 }
                 if (fought && !result.AttackerWon) note.AvoidUntil = Now + (target.IsBarbarian ? 2 : 1) * SecondsPerDay;
-                // Scouts sent alone who didn't get through: the village has scouts of its own. Leave it be a while.
-                if (!fought && !result.Scouted) note.AvoidUntil = Now + SecondsPerDay;
+                // Scouts sent alone who didn't get through: the village has more scouts than were sent. Next time
+                // it takes twice as many (and one more), after a wait that grows with every failure: 6 and 12
+                // hours, a day, then two days at most. Scouts that get through wipe the slate.
+                if (!fought && !result.Scouted)
+                {
+                    int sent = command.Troops[(int)UnitType.Scout];
+                    note.ScoutsNeeded = Math.Max(note.ScoutsNeeded, 2 * sent + 1);
+                    note.ScoutFails++;
+                    note.ScoutAgainAt = Now + Math.Min(ScoutWaitMaxHours, ScoutWaitHours * Math.Pow(2, note.ScoutFails - 1)) * 3600;
+                }
+                if (result.Scouted)
+                {
+                    note.ScoutsNeeded = note.ScoutFails = 0;
+                    note.ScoutAgainAt = 0;
+                }
 
                 // What there is to plunder: counted by scouts that got through (with the buildings, so it can
                 // work out the mines and hiding place), or learned from the haul: a raid that came back with room
                 // to spare emptied the place; a full one means about as much again was left.
+                // (Only what enough scouts came back to see: the buildings, the stores, or neither.)
+                // (A list that was never filled comes back from a save empty rather than missing: check the length.)
                 int hidden = 0;
-                if (result.Scouted && report.ScoutedLevels != null)
+                if (report.SawBuildings && report.ScoutedLevels != null && report.ScoutedLevels.Length > 0) note.SeenLevels = (int[])report.ScoutedLevels.Clone();
+                if (report.SawResources)
                 {
-                    note.SeenLevels = (int[])report.ScoutedLevels.Clone();
-                    hidden = Buildings.HiddenCapacity(note.SeenLevels[(int)BuildingType.HidingPlace]);
+                    if (note.SeenLevels != null && (int)BuildingType.HidingPlace < note.SeenLevels.Length)
+                        hidden = Buildings.HiddenCapacity(note.SeenLevels[(int)BuildingType.HidingPlace]);
                     note.LootSeenAt = Now;
                     note.LootWood = Math.Max(0, report.ScoutedResources.Wood - hidden);
                     note.LootClay = Math.Max(0, report.ScoutedResources.Clay - hidden);

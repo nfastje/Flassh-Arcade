@@ -78,6 +78,84 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
+        public void TroopsSupportingAnotherVillageStillCount()
+        {
+            var world = NewWorld();
+            var v = world.PlayerVillage;
+            Rich(v);
+            v.Levels[(int)BuildingType.Barracks] = 1;
+            // 40 of the village's spearmen are stationed elsewhere, supporting a neighbor.
+            var host = world.Villages.First(x => x != v);
+            host.Supports.Add(new SupportGroup { FromVillageId = v.Id, OwnerId = v.OwnerId, Troops = new int[Units.Count] });
+            host.Supports[host.Supports.Count - 1].Troops[(int)UnitType.Spearman] = 40;
+            var targets = new int[Units.Count];
+            targets[(int)UnitType.Spearman] = 50;
+            world.SetTroopTargets(v, targets, 100);
+            Assert.AreEqual(10, v.Recruitment.Where(o => o.Unit == UnitType.Spearman).Sum(o => o.Remaining), "only the ten still missing");
+        }
+
+        [Test]
+        public void UnitsFromTheSameBuildingAreTrainedSideBySide()
+        {
+            var world = NewWorld();
+            var v = world.PlayerVillage;
+            Rich(v);
+            v.Levels[(int)BuildingType.Barracks] = 5;
+            v.Research[(int)UnitType.Swordsman] = 1;
+            var targets = new int[Units.Count];
+            targets[(int)UnitType.Spearman] = 5000;
+            targets[(int)UnitType.Swordsman] = 5000;
+            world.SetTroopTargets(v, targets, 100);
+            int Queued(UnitType t) => v.Recruitment.Where(o => o.Unit == t).Sum(o => o.Remaining);
+            int spears = Queued(UnitType.Spearman), swords = Queued(UnitType.Swordsman);
+            Assert.Greater(spears, 0);
+            Assert.Greater(swords, 0, "swordsmen are trained alongside the spearmen, not after them");
+            Assert.That((double)spears / swords, Is.InRange(0.5, 2.0), $"{spears} spearmen, {swords} swordsmen");
+        }
+
+        /// <summary>A village with mines at 10 and a barracks, following the Economy template and wanting spearmen, run for days.</summary>
+        static (World world, Village v) Managed(int troopShare, double days)
+        {
+            var world = NewWorld();
+            var v = world.PlayerVillage;
+            foreach (var b in new[] { BuildingType.TimberCamp, BuildingType.ClayPit, BuildingType.IronMine, BuildingType.Warehouse })
+                v.Levels[(int)b] = 10;
+            v.Levels[(int)BuildingType.Farm] = 5;
+            v.Levels[(int)BuildingType.Headquarters] = 5;
+            v.Levels[(int)BuildingType.Barracks] = 3;
+            world.SetVillageTemplate(v, "Economy");
+            var targets = new int[Units.Count];
+            targets[(int)UnitType.Spearman] = 5000;
+            world.SetTroopTargets(v, targets, troopShare);
+            world.AdvanceByRealSeconds(days * World.SecondsPerDay);
+            return (world, v);
+        }
+
+        static int Spearmen(Village v) => v.TroopCount(UnitType.Spearman) + v.Recruitment.Where(o => o.Unit == UnitType.Spearman).Sum(o => o.Remaining);
+
+        [Test]
+        public void TroopsGetTheirShareWhileBuildingsAreSavedFor()
+        {
+            var (_, none) = Managed(0, 4);
+            var (world, half) = Managed(50, 4);
+            Assert.Greater(Spearmen(half), Spearmen(none) + 100, $"troops are trained while the template saves up ({Spearmen(half)} vs {Spearmen(none)})");
+            int before = Managed(50, 0).v.Points;
+            Assert.Greater(half.Points, before + 30, $"and the template still moves on ({before} → {half.Points}; {none.Points} with no troops)");
+            var m = world.ManagementOf(half.Id);
+            double share = m.SpentOnTroops / (m.SpentOnTroops + m.SpentOnBuildings);
+            Assert.That(share, Is.InRange(0.3, 0.7), "about half of the spending went on troops");
+        }
+
+        [Test]
+        public void AllTroopsMeansTheTemplateOnlyGetsTheRest()
+        {
+            var (_, all) = Managed(100, 4);
+            var (_, half) = Managed(50, 4);
+            Assert.Greater(Spearmen(all), Spearmen(half), $"{Spearmen(all)} vs {Spearmen(half)}");
+            Assert.Less(all.Points, half.Points, $"{all.Points} vs {half.Points}");
+        }
+
+        [Test]
         public void ThePlayersOwnTemplatesCanBeMadeAndDeleted()
         {
             var world = NewWorld();

@@ -23,12 +23,14 @@ namespace MedievalWorldConquest
         readonly VisualElement villageRows, templateRows, troopEditor, templateEditor, villagesSection, templatesSection;
         readonly Button villagesTab, templatesTab;
         readonly ScrollView scroll;
-        readonly Label troopTitle, templateTitle, createMessage;
+        readonly Label troopTitle, templateTitle, createMessage, troopPopulation;
         readonly IntegerField[] troopFields = new IntegerField[Units.Count];
+        readonly List<(int share, Button button)> shareButtons = new List<(int, Button)>();
+        int troopShare = World.DefaultTroopShare;
         readonly TextField newName;
         readonly DropdownField copyFrom;
         readonly VisualElement stepList;
-        readonly List<(Village village, Label status, Label troops)> shown = new List<(Village, Label, Label)>();
+        readonly List<(Village village, Label status, VisualElement troops)> shown = new List<(Village, Label, VisualElement)>();
         string villagesSignature, templatesSignature;
         float nextRefresh;
         int troopVillageId = -1;
@@ -70,7 +72,7 @@ namespace MedievalWorldConquest
             popupHeader.Add(troopTitle);
             popupHeader.Add(ButtonWith("✕", () => Show(troopEditor, false), "btn", "btn--small", "manager-popup-close"));
             troopEditor.Add(popupHeader);
-            troopEditor.Add(Text("How many of each to have, counting those at home, out, and in training.", "row-level", "manager-popup-hint"));
+            troopEditor.Add(Text("How many of each to have, counting those at home, in training, out on the march, and supporting other villages.", "row-level", "manager-popup-hint"));
             var grid = Element("manager-troop-grid");
             foreach (var type in Units.InDisplayOrder)
             {
@@ -79,11 +81,27 @@ namespace MedievalWorldConquest
                 cell.Add(Icons.Element(Icons.Unit(type), 20, "cost-icon"));
                 var field = new IntegerField { value = 0 };
                 field.AddToClassList("amount-field");
+                field.RegisterValueChangedCallback(_ => ShowTroopPopulation());
                 troopFields[(int)type] = field;
                 cell.Add(field);
                 grid.Add(cell);
             }
             troopEditor.Add(grid);
+            // What the targets come to in population, against the room the farm has (and could have).
+            troopPopulation = Text("", "row-level", "manager-popup-hint", "manager-troop-population");
+            troopEditor.Add(troopPopulation);
+            // How the village's resources are split while it has both buildings and troops to get.
+            var shareRow = Element("option-row", "manager-share-row");
+            shareRow.Add(Text("Spend on troops", "row-title", "manager-share-label"));
+            foreach (int share in World.TroopShares)
+            {
+                int s = share;
+                var b = ButtonWith($"{s}%", () => ChooseShare(s), "option", "manager-share");
+                shareButtons.Add((s, b));
+                shareRow.Add(b);
+            }
+            troopEditor.Add(shareRow);
+            troopEditor.Add(Text("The rest goes on the build template. With the template finished, troops get everything.", "row-level", "manager-popup-hint"));
             var troopActions = Element("option-row", "manager-actions");
             foreach (var (name, troops) in World.TroopPresets)
             {
@@ -145,11 +163,11 @@ namespace MedievalWorldConquest
             nextRefresh = UnityEngine.Time.unscaledTime + 0.5f;
             var human = world.HumanPlayer;
             if (human == null) return;
-            var villages = world.HumanVillages();
+            var villages = world.HumanVillagesByName();
             var templates = world.AllTemplates();
 
             string templatesNow = string.Join("|", templates.ConvertAll(t => t.Name + ":" + t.Steps.Count));
-            string villagesNow = string.Join(",", villages.ConvertAll(v => v.Id.ToString())) + "#" + templatesNow;
+            string villagesNow = string.Join(",", villages.ConvertAll(v => v.Id + ":" + v.Name)) + "#" + templatesNow;
             if (villagesNow != villagesSignature)
             {
                 villagesSignature = villagesNow;
@@ -163,7 +181,7 @@ namespace MedievalWorldConquest
             foreach (var (v, status, troops) in shown)
             {
                 SetText(status, world.ManagerStatus(v));
-                SetText(troops, TroopSummary(world, v));
+                ShowTroopTargets(world, v, troops);
             }
         }
 
@@ -178,8 +196,7 @@ namespace MedievalWorldConquest
                 int id = v.Id;
                 var row = Element("manager-row");
                 var name = Element("manager-name");
-                name.Add(Link(v.Name, () => links.SwitchTo(id)));
-                name.Add(Text($"({v.X}|{v.Y})", "row-level"));
+                ShowName(name, v);
                 row.Add(name);
                 var m = world.ManagementOf(id);
                 var pick = new DropdownField(choices, Math.Max(0, choices.IndexOf(string.IsNullOrEmpty(m?.Template) ? NoTemplate : m.Template)));
@@ -189,7 +206,7 @@ namespace MedievalWorldConquest
                 var details = Element("manager-details");
                 var status = Text("", "row-level");
                 details.Add(status);
-                var troops = Text("", "row-level");
+                var troops = Element("manager-troops");
                 details.Add(troops);
                 row.Add(details);
                 Button troopsButton = null;
@@ -200,17 +217,78 @@ namespace MedievalWorldConquest
             }
         }
 
-        static string TroopSummary(World world, Village v)
+        /// <summary>A village's name, as a link to switch to it, with a pencil to rename it, then its coordinates.</summary>
+        void ShowName(VisualElement cell, Village v)
+        {
+            cell.Clear();
+            int id = v.Id;
+            var link = Link(v.Name, () => links.SwitchTo(id), "manager-village-link");
+            link.tooltip = v.Name;
+            cell.Add(link);
+            var pencil = new Button(() => StartRename(cell, v)) { tooltip = "Rename" };
+            pencil.AddToClassList("pencil-btn");
+            pencil.Add(Icons.Element(Icons.Pencil, 16));
+            cell.Add(pencil);
+            cell.Add(Text($"({v.X}|{v.Y})", "row-level", "manager-coords"));
+        }
+
+        /// <summary>Swaps the name for a box to type the new one in: Enter or OK renames, ✕ leaves it be.</summary>
+        void StartRename(VisualElement cell, Village v)
+        {
+            cell.Clear();
+            var field = new TextField { maxLength = World.MaxVillageNameLength, value = v.Name };
+            field.AddToClassList("rename-field");
+            field.AddToClassList("manager-rename-field");
+            void Done(bool rename)
+            {
+                if (rename) game.RenameVillage(v.Id, field.value);
+                ShowName(cell, v);
+            }
+            field.RegisterCallback<KeyDownEvent>(e =>
+            {
+                if (e.keyCode == UnityEngine.KeyCode.Return || e.keyCode == UnityEngine.KeyCode.KeypadEnter) Done(true);
+            }, TrickleDown.TrickleDown);
+            cell.Add(field);
+            cell.Add(ButtonWith("OK", () => Done(true), "btn", "btn--small", "manager-rename-btn"));
+            cell.Add(ButtonWith("✕", () => Done(false), "btn", "btn--small", "manager-rename-btn"));
+            field.schedule.Execute(() =>
+            {
+                field.Focus();
+                field.SelectAll();
+            });
+        }
+
+        /// <summary>
+        /// A village's troop targets as unit icons with their counts (after the share of spending that goes on
+        /// troops), compact enough to fit the row. Rebuilt only when the targets change.
+        /// </summary>
+        static void ShowTroopTargets(World world, Village v, VisualElement into)
         {
             var m = world.ManagementOf(v.Id);
-            if (m?.TroopTargets == null) return "No troop targets.";
-            var parts = new List<string>();
-            foreach (var type in Units.InDisplayOrder)
-            {
-                int n = (int)type < m.TroopTargets.Length ? m.TroopTargets[(int)type] : 0;
-                if (n > 0) parts.Add($"{n:N0} {Units.Get(type).Name}");
-            }
-            return parts.Count == 0 ? "No troop targets." : "Troops: " + string.Join(" · ", parts);
+            string key = m?.TroopTargets == null ? "" : m.TroopShare + ":" + string.Join(",", m.TroopTargets);
+            if (into.userData as string == key) return;
+            into.userData = key;
+            into.Clear();
+            bool any = false;
+            if (m?.TroopTargets != null)
+                foreach (var type in Units.InDisplayOrder)
+                {
+                    int n = (int)type < m.TroopTargets.Length ? m.TroopTargets[(int)type] : 0;
+                    if (n <= 0) continue;
+                    if (!any)
+                    {
+                        var share = Text($"{m.TroopShare}%", "row-level", "manager-troops-share");
+                        share.tooltip = $"{m.TroopShare}% of the village's spending goes on troops";
+                        into.Add(share);
+                        any = true;
+                    }
+                    var cell = Element("manager-troop-target");
+                    cell.tooltip = $"{Units.Get(type).Name}: {n:N0} wanted";
+                    cell.Add(Icons.Element(Icons.Unit(type), 16, "manager-troop-icon"));
+                    cell.Add(Text($"{n:N0}", "row-level", "manager-troop-count"));
+                    into.Add(cell);
+                }
+            if (!any) into.Add(Text("No troop targets.", "row-level"));
         }
 
         void OpenTroops(World world, int villageId, VisualElement by)
@@ -221,6 +299,7 @@ namespace MedievalWorldConquest
             SetText(troopTitle, $"Troop targets: {v.Name}");
             var m = world.ManagementOf(villageId);
             FillTroops(m?.TroopTargets ?? new int[Units.Count]);
+            ChooseShare(m?.TroopShare ?? World.DefaultTroopShare);
             // Just below the button, its right edge lined up with the button's.
             var at = Root.WorldToLocal(by.worldBound);
             troopEditor.style.left = at.xMax - PopupWidth;
@@ -249,13 +328,49 @@ namespace MedievalWorldConquest
         void FillTroops(int[] troops)
         {
             for (int i = 0; i < Units.Count; i++) troopFields[i]?.SetValueWithoutNotify(i < troops.Length ? troops[i] : 0);
+            ShowTroopPopulation();
+        }
+
+        /// <summary>
+        /// The population the targets need, the room for troops now (what the farm holds less what the buildings use),
+        /// and the most there could be: a level 30 farm, with the village's build template finished.
+        /// </summary>
+        void ShowTroopPopulation()
+        {
+            var world = lastWorld;
+            var v = world?.FindVillage(troopVillageId);
+            if (v == null || troopPopulation == null) return;
+            long need = 0;
+            for (int i = 0; i < Units.Count; i++) need += (long)Math.Max(0, troopFields[i]?.value ?? 0) * Units.Get((UnitType)i).Cost.Population;
+            int roomNow = v.PopulationCapacity - v.BuildingPopulation;
+            // The buildings once the template is done: each at the higher of its level now (with what's queued) and the template's.
+            var levels = new int[Buildings.Count];
+            for (int b = 0; b < Buildings.Count; b++) levels[b] = v.Level((BuildingType)b) + v.QueuedCount((BuildingType)b);
+            var template = world.FindTemplate(world.ManagementOf(v.Id)?.Template);
+            if (template != null)
+                foreach (var step in template.Steps)
+                    levels[(int)step.Building] = Math.Max(levels[(int)step.Building], Math.Min(step.Level, Buildings.Get(step.Building).MaxLevel));
+            int finishedBuildings = 0;
+            for (int b = 0; b < Buildings.Count; b++) finishedBuildings += Buildings.PopulationAtLevel((BuildingType)b, levels[b]);
+            int maxFarm = Buildings.Get(BuildingType.Farm).MaxLevel;
+            int roomMost = Buildings.FarmCapacity(maxFarm) - finishedBuildings;
+            SetText(troopPopulation,
+                $"These troops need {need:N0} population. Room for troops now: {Math.Max(0, roomNow):N0} (farm level {v.Level(BuildingType.Farm)}). " +
+                $"At most: {Math.Max(0, roomMost):N0} (farm level {maxFarm}{(template != null ? $", {template.Name} finished" : "")}).");
+            troopPopulation.EnableInClassList("manager-troop-population--over", need > roomMost);
+        }
+
+        void ChooseShare(int share)
+        {
+            troopShare = share;
+            foreach (var (s, b) in shareButtons) b.EnableInClassList("option--selected", s == share);
         }
 
         void SaveTroops()
         {
             var targets = new int[Units.Count];
             for (int i = 0; i < Units.Count; i++) targets[i] = Math.Max(0, troopFields[i]?.value ?? 0);
-            game.SetTroopTargets(troopVillageId, targets);
+            game.SetTroopTargets(troopVillageId, targets, troopShare);
             Show(troopEditor, false);
         }
 

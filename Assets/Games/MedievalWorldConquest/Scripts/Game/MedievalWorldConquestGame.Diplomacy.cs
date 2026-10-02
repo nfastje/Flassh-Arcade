@@ -60,8 +60,16 @@ namespace MedievalWorldConquest
         public void ProposeRelation(int tribeId, RelationKind kind)
         {
             var t = world?.FindTribe(tribeId);
-            if (t == null || !world.ProposeRelation(t, kind)) return;
-            if (kind == RelationKind.Enemy) ui.ShowToast($"You are at war with {t.Name}.");
+            if (t == null) return;
+            var mine = world.TribeOf(world.HumanPlayer);
+            bool peace = kind == RelationKind.Neutral && world.Relation(mine, t) == RelationKind.Enemy;
+            if (!world.ProposeRelation(t, kind))
+            {
+                if (peace) ui.ShowToast($"{t.Name} refused peace. Their answer is in your messages.", 4f);
+                return;
+            }
+            if (peace) ui.ShowToast($"{t.Name} accepted peace. The war is over.", 4f);
+            else if (kind == RelationKind.Enemy) ui.ShowToast($"You are at war with {t.Name}.");
             else if (kind == RelationKind.Neutral) ui.ShowToast($"No more agreement with {t.Name}.");
             else ui.ShowToast($"{t.Name} accepted.");
         }

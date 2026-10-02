@@ -12,6 +12,9 @@ namespace MedievalWorldConquest.Simulation
         /// Now and then, looks for another player's village in reach that it can beat (as far as it knows), scouting
         /// it first if it can, then sends its whole offensive army, with catapults aimed at the wall or barracks.
         /// </summary>
+        /// <summary>The fewest scouts a lord sends to look at a player's village before war.</summary>
+        const int WarScouts = 3;
+
         void AiAttack(Player lord, Village v, AiStyle style)
         {
             // A tribe's named target draws its members in, whatever their mood; otherwise war is a matter of temperament.
@@ -28,7 +31,10 @@ namespace MedievalWorldConquest.Simulation
                 offense[(int)type] = v.TroopCount(type);
                 power += offense[(int)type] * Units.Get(type).Attack;
             }
-            if (power < AiMinAttackPower) return;
+            // Too few at home to fight. (Only if the troops out raiding would make the difference is it worth
+            // looking for a target to gather them for: see below.)
+            bool canFight = power >= AiMinAttackPower;
+            if (!canFight && power + OffenseAway(v) < AiMinAttackPower) return;
 
             // The most tempting target it can beat, as far as it knows: close, bigger (more to plunder), and all the
             // more if they attacked us. Villages it knows nothing about are scouted first when it has scouts;
@@ -36,7 +42,6 @@ namespace MedievalWorldConquest.Simulation
             // Candidates are ranked by how tempting they are first, and only then checked (a battle worked out in
             // advance each) from the most tempting down, stopping at the first it can beat: the same choice as
             // checking them all, for a fraction of the work in a crowded neighborhood.
-            bool hasScouts = v.TroopCount(UnitType.Scout) > 0;
             var underAttack = AttackTargets(lord);
             var attackCandidates = Emptied(ref this.attackCandidates);
             foreach (var t in VillagesNear(v.X, v.Y, AiAttackRange, Emptied(ref nearby)))
@@ -46,7 +51,7 @@ namespace MedievalWorldConquest.Simulation
                 var note = NoteFor(lord, t.Id, false);
                 if (note != null && (note.AvoidUntil > Now || note.NextRaidAt > Now)) continue;
                 if (underAttack.Contains(t.Id)) continue;
-                bool scoutFirst = !Known(note) && hasScouts;
+                bool scoutFirst = !Known(note, t) && ScoutRun(lord, v, t.Id, WarScouts, player: true) > 0;
                 // Near and big enough to be worth it, but the biggest aren't singled out: size counts for less and less.
                 double score = (20 * Math.Sqrt(t.Points) + 100) / (2 + Distance(v, t));
                 if (scoutFirst) score *= 0.5; // a sure thing beats a maybe
@@ -61,30 +66,49 @@ namespace MedievalWorldConquest.Simulation
             bool bestNeedsScouting = false;
             foreach (var (t, _) in attackCandidates)
             {
+                if (!canFight) break;
                 // What the lord or its tribe mates have seen there.
                 var note = Diplomacy ? SharedSighting(lord, t.Id).note : NoteFor(lord, t.Id, false);
-                bool known = Known(note);
+                bool known = Known(note, t);
                 if (known && !Beatable(offense, note.SeenTroops, note.SeenAt, note.SeenWall)) continue;
-                if (!known && !hasScouts && !Beatable(offense, GuessDefenders(t), Now, GuessWall(t))) continue;
+                // Scouts go first if enough of them can get through; otherwise it's a cautious guess (all the more
+                // cautious where scouting has failed).
+                bool canScout = !known && ScoutRun(lord, v, t.Id, WarScouts, player: true) > 0;
+                if (!known && !canScout && !Beatable(offense, GuessDefenders(lord, t), Now, GuessWall(t))) continue;
                 best = t;
-                bestNeedsScouting = !known && hasScouts;
+                bestNeedsScouting = canScout;
                 break;
             }
-            if (best == null) return;
+            // Nothing it can beat with what's home. If the most tempting target could be beaten with the troops out
+            // raiding back as well, the village gathers them for it (a concrete operation, not a mere wish to fight).
+            if (best == null)
+            {
+                if (attackCandidates.Count > 0 && OffenseAway(v) > 0)
+                {
+                    var t = attackCandidates[0].village;
+                    var all = OffenseWithRaiders(v, offense);
+                    var note = Diplomacy ? SharedSighting(lord, t.Id).note : NoteFor(lord, t.Id, false);
+                    bool winnable = Known(note, t) ? Beatable(all, note.SeenTroops, note.SeenAt, note.SeenWall)
+                                                   : Beatable(all, GuessDefenders(lord, t), Now, GuessWall(t));
+                    if (winnable) Muster(v);
+                }
+                return;
+            }
 
             if (bestNeedsScouting)
             {
                 // Look before leaping: scouts now, the army on a later turn if the coast is clear.
                 var scouts = new int[Units.Count];
-                scouts[(int)UnitType.Scout] = Math.Min(3, v.TroopCount(UnitType.Scout));
+                scouts[(int)UnitType.Scout] = ScoutRun(lord, v, best.Id, WarScouts, player: true);
                 Send(v, best, scouts, CommandKind.Attack);
                 return;
             }
 
             var seen = Diplomacy ? SharedSighting(lord, best.Id).note : NoteFor(lord, best.Id, false);
-            int wall = Known(seen) ? seen.SeenWall : GuessWall(best);
+            int wall = Known(seen, best) ? seen.SeenWall : GuessWall(best);
             var aim = wall > 0 && offense[(int)UnitType.Ram] == 0 ? BuildingType.Wall : BuildingType.Barracks;
             var command = Send(v, best, offense, CommandKind.Attack, aim);
+            if (command != null) Mustered(v);
             // Give the village time to recover before the next attack, so the lord doesn't hammer it non-stop.
             if (command != null) NoteFor(lord, best.Id, true).NextRaidAt = Now + 2 * (command.ArriveTime - Now) + 6 * 3600;
             // A ram attack is worth hiding among fakes.

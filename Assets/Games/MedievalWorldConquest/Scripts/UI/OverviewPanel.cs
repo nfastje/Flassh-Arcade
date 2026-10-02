@@ -18,7 +18,11 @@ namespace MedievalWorldConquest
 
         readonly Action<int> switchTo;
         readonly ScrollView list;
-        readonly Label summary;
+        readonly Label summaryVillages;
+        readonly VisualElement summaryStores, summaryTroops;
+        readonly Label[] summaryStock = new Label[3];
+        readonly VisualElement[] summaryUnitCells = new VisualElement[Units.Count];
+        readonly Label[] summaryUnits = new Label[Units.Count];
         readonly Button showProduction, showTroops;
         readonly VisualElement productionHeader, troopsHeader;
         readonly List<Row> rows = new List<Row>();
@@ -32,6 +36,9 @@ namespace MedievalWorldConquest
             public VisualElement Root, Production, Troops;
             public Button Name;
             public Label Where, Points, Wood, Clay, Iron, Storage, Farm, Building, BuildingTime, Incoming;
+            /// <summary>The units in training, as icons with counts (rebuilt when that changes).</summary>
+            public VisualElement Recruiting;
+            public string RecruitingShown;
             public readonly Label[] Units = new Label[Simulation.Units.Count];
             public int VillageId;
         }
@@ -51,7 +58,35 @@ namespace MedievalWorldConquest
             modes.Add(showTroops);
             column.Add(modes);
 
-            summary = Text("", "row-info");
+            // The totals across every village: stores, or troops at home, as icons with their counts.
+            var summary = Element("overview-summary");
+            summaryVillages = Text("", "row-info", "overview-summary-text");
+            summary.Add(summaryVillages);
+            summaryStores = Element("overview-summary-group");
+            summaryStores.Add(Text("in store altogether:", "row-info", "overview-summary-text"));
+            for (int i = 0; i < 3; i++)
+            {
+                var chip = Element("overview-summary-chip");
+                chip.Add(Icons.Element(Icons.Resource((ResourceType)i), 16));
+                summaryStock[i] = Text("", "row-info", "overview-summary-count");
+                chip.Add(summaryStock[i]);
+                summaryStores.Add(chip);
+            }
+            summary.Add(summaryStores);
+            summaryTroops = Element("overview-summary-group");
+            summaryTroops.Add(Text("at home altogether:", "row-info", "overview-summary-text"));
+            foreach (var type in Units.InDisplayOrder)
+            {
+                var chip = Element("overview-summary-chip");
+                chip.tooltip = Units.Get(type).Name;
+                chip.Add(Icons.Element(Icons.Unit(type), 16));
+                summaryUnits[(int)type] = Text("", "row-info", "overview-summary-count");
+                chip.Add(summaryUnits[(int)type]);
+                summaryUnitCells[(int)type] = chip;
+                summaryTroops.Add(chip);
+            }
+            summary.Add(summaryTroops);
+            summary.Add(Text("Click a village's name to go there.", "row-info", "overview-summary-text"));
             column.Add(summary);
 
             // The column headings take the same cell style as the rows below, so every column lines up.
@@ -67,6 +102,7 @@ namespace MedievalWorldConquest
                 productionHeader.Add(cell);
             }
             productionHeader.Add(Text("Construction", "overview-cell", "overview-building"));
+            productionHeader.Add(Text("Recruiting", "overview-cell", "overview-recruiting"));
             header.Add(productionHeader);
             troopsHeader = Element("overview-group");
             foreach (var type in Units.InDisplayOrder)
@@ -106,9 +142,9 @@ namespace MedievalWorldConquest
         {
             if (UnityEngine.Time.unscaledTime < nextRefresh) return;
             nextRefresh = UnityEngine.Time.unscaledTime + 0.5f;
-            var own = world.HumanVillages();
+            var own = world.HumanVillagesByName();
 
-            // New rows when villages are won or lost; otherwise the cells are just updated.
+            // New rows when villages are won or lost, or a new name changes the order; otherwise the cells are just updated.
             string now = string.Join(",", own.ConvertAll(v => v.Id.ToString()));
             if (now != signature)
             {
@@ -141,16 +177,17 @@ namespace MedievalWorldConquest
                 for (int u = 0; u < Units.Count; u++) troops[u] += v.TroopCount((UnitType)u);
             }
 
-            string villages = $"{own.Count:N0} village{(own.Count == 1 ? "" : "s")}";
-            if (own.Count == 0) SetText(summary, "You hold no villages.");
-            else if (troopsShown)
+            SetText(summaryVillages, own.Count == 0 ? "You hold no villages." : $"{own.Count:N0} village{(own.Count == 1 ? "" : "s")}  ·");
+            Show(summaryStores, own.Count > 0 && !troopsShown);
+            Show(summaryTroops, own.Count > 0 && troopsShown);
+            SetText(summaryStock[0], $"{wood:N0}");
+            SetText(summaryStock[1], $"{clay:N0}");
+            SetText(summaryStock[2], $"{iron:N0}");
+            for (int u = 0; u < Units.Count; u++)
             {
-                var parts = new List<string>();
-                foreach (var type in Units.InDisplayOrder)
-                    if (troops[(int)type] > 0) parts.Add($"{troops[(int)type]:N0} {Units.Get(type).Name}");
-                SetText(summary, $"{villages}  ·  at home altogether: {(parts.Count == 0 ? "no troops" : string.Join(" · ", parts))}. Click a village's name to go there.");
+                Show(summaryUnitCells[u], troops[u] > 0);
+                SetText(summaryUnits[u], $"{troops[u]:N0}");
             }
-            else SetText(summary, $"{villages}  ·  in store altogether: wood {wood:N0} · clay {clay:N0} · iron {iron:N0}. Click a village's name to go there.");
         }
 
         void ShowProduction(World world, Row row, Village v)
@@ -162,6 +199,7 @@ namespace MedievalWorldConquest
             SetText(row.Storage, $"{cap:N0}");
             SetText(row.Farm, $"{v.PopulationUsed:N0}/{v.PopulationCapacity:N0}");
             row.Farm.EnableInClassList("overview-full", v.PopulationUsed >= v.PopulationCapacity);
+            ShowRecruiting(row, v);
             // What's being built on one line; how long it has left (and how many more are queued) under it.
             if (v.Queue.Count == 0)
             {
@@ -173,6 +211,33 @@ namespace MedievalWorldConquest
             SetText(row.Building, $"{Buildings.Get(first.Type).Name} {first.Level}");
             SetText(row.BuildingTime, (first.Started ? Real(world, Math.Max(0, first.FinishTime - world.Now)) : "waiting")
                                       + (v.Queue.Count > 1 ? $"  (+{v.Queue.Count - 1} queued)" : ""));
+        }
+
+        /// <summary>
+        /// The units in training in a village, by kind, as an icon and how many each (in Tribal Wars' order), so a
+        /// busy village never runs over into the next column; the full list is in the tooltip.
+        /// </summary>
+        static void ShowRecruiting(Row row, Village v)
+        {
+            var training = new int[Units.Count];
+            foreach (var o in v.Recruitment) training[(int)o.Unit] += o.Remaining;
+            string key = string.Join(",", training);
+            if (key == row.RecruitingShown) return;
+            row.RecruitingShown = key;
+            row.Recruiting.Clear();
+            var names = new List<string>();
+            foreach (var type in Units.InDisplayOrder)
+            {
+                int n = training[(int)type];
+                if (n <= 0) continue;
+                names.Add($"{n:N0} {Units.Get(type).Name}");
+                var cell = Element("overview-recruit-unit");
+                cell.Add(Icons.Element(Icons.Unit(type), 16));
+                cell.Add(Text($"{n:N0}", "overview-cell", "overview-recruit-count"));
+                row.Recruiting.Add(cell);
+            }
+            if (names.Count == 0) row.Recruiting.Add(Text("–", "overview-cell"));
+            row.Recruiting.tooltip = names.Count == 0 ? "" : "In training: " + string.Join(", ", names);
         }
 
         static void ShowTroops(Row row, Village v)
@@ -212,6 +277,8 @@ namespace MedievalWorldConquest
             building.Add(row.Building);
             building.Add(row.BuildingTime);
             row.Production.Add(building);
+            row.Recruiting = Element("overview-recruiting", "overview-recruiting-units");
+            row.Production.Add(row.Recruiting);
             row.Root.Add(row.Production);
 
             row.Troops = Element("overview-group");

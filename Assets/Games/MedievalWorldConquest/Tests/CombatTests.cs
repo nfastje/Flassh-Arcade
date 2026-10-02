@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using MedievalWorldConquest.Simulation;
 using NUnit.Framework;
@@ -41,6 +42,20 @@ namespace MedievalWorldConquest.Tests
             Assert.IsTrue(r.AttackerWon);
             Assert.AreEqual(1, r.DefenderLossFraction);
             Assert.AreEqual(Math.Pow(770.0 / 4000.0, 1.5), r.AttackerLossFraction, 1e-9);
+        }
+
+        [Test]
+        public void DefendingScoutsNeverDieToScouts()
+        {
+            var r = Battle.Fight(Army((UnitType.Scout, 300)), Army((UnitType.Scout, 250)), 0, 0);
+            Assert.IsTrue(r.Scouted, "outnumbered, the defenders let some through");
+            Assert.AreEqual(0, r.DefenderScoutLossFraction, "and lose none of their own");
+            Assert.AreEqual(Math.Pow(250.0 / 300.0, 1.5), r.AttackerScoutLossFraction, 1e-9);
+
+            var beaten = Battle.Fight(Army((UnitType.Scout, 200)), Army((UnitType.Scout, 250)), 0, 0);
+            Assert.IsFalse(beaten.Scouted);
+            Assert.AreEqual(1, beaten.AttackerScoutLossFraction, "too few: none come back");
+            Assert.AreEqual(0, beaten.DefenderScoutLossFraction);
         }
 
         [Test]
@@ -356,7 +371,12 @@ namespace MedievalWorldConquest.Tests
 
             Assert.AreEqual(1, target.Supports.Count);
             Assert.AreEqual(5, target.Supports[0].Troops[(int)UnitType.Axeman]);
-            Assert.AreEqual(ReportKind.SupportArrived, world.Reports.Last().Kind);
+            var arrived = world.Reports.Last();
+            Assert.AreEqual(ReportKind.SupportArrived, arrived.Kind);
+            Assert.AreEqual(world.HumanPlayer.Name, arrived.AttackerPlayer, "the report says whose troops they are");
+            Assert.AreEqual(world.HumanPlayer.Id, arrived.AttackerPlayerId);
+            Assert.AreEqual((home.X, home.Y), (arrived.AttackerX, arrived.AttackerY), "and where they came from");
+            Assert.AreEqual(target.OwnerId, arrived.DefenderPlayerId);
             Assert.AreEqual(World.PopulationOf(Army((UnitType.Axeman, 5))), home.AwayPopulation);
 
             var back = world.Recall(target, home.Id);
@@ -447,6 +467,33 @@ namespace MedievalWorldConquest.Tests
         }
 
         [Test]
+        public void TheMoreScoutsComeBackTheMoreTheySaw()
+        {
+            var world = WarWorld(out var home, out var target);
+            target.Troops[(int)UnitType.Scout] = 100;
+            home.Troops[(int)UnitType.Scout] = 1000;
+            BattleReport Look(int scouts)
+            {
+                var c = world.Send(home, target, Army((UnitType.Scout, scouts)), CommandKind.Attack);
+                world.AdvanceTo(c.ArriveTime);
+                return world.Reports.Last(r => r.Kind == ReportKind.Attack);
+            }
+            // Barely more than theirs: the troops only. Double: the resources too. Five times: everything.
+            var few = Look(110);
+            Assert.IsTrue(few.Scouted && few.DefenderVisible);
+            Assert.IsFalse(few.SawResources);
+            Assert.IsFalse(few.SawBuildings);
+            Assert.IsNull(few.ScoutedLevels);
+            var twice = Look(200);
+            Assert.IsTrue(twice.SawResources);
+            Assert.IsFalse(twice.SawBuildings);
+            var plenty = Look(500);
+            Assert.IsTrue(plenty.SawResources && plenty.SawBuildings);
+            Assert.IsNotNull(plenty.ScoutedLevels);
+            Assert.AreEqual(100, target.TroopCount(UnitType.Scout), "their scouts never died");
+        }
+
+        [Test]
         public void ReportsCanBeReadAndDeleted()
         {
             var world = WarWorld(out var home, out var target);
@@ -457,6 +504,34 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(0, world.UnreadReports);
             Assert.IsTrue(world.DeleteReport(world.Reports[0].Id));
             Assert.AreEqual(0, world.Reports.Count);
+        }
+
+        [Test]
+        public void FullReportListsMoveTheirOldestToTheArchive()
+        {
+            var world = WarWorld(out var home, out var target);
+            for (int i = 0; i < World.MaxReports + 5; i++)
+            {
+                var c = world.Send(home, target, Army((UnitType.Scout, 1)), CommandKind.Attack);
+                world.AdvanceTo(c.ArriveTime);
+                home.Troops[(int)UnitType.Scout] = 1;
+            }
+            Assert.AreEqual(World.MaxReports, world.Reports.Count);
+            Assert.AreEqual(5, world.ArchivedReports.Count, "the five oldest were archived, not lost");
+            Assert.Less(world.ArchivedReports.Last().Id, world.Reports[0].Id);
+            Assert.AreEqual(world.Reports.Count(r => !r.Read), world.UnreadReports, "only the list counts as unread");
+
+            // Ticked reports: archived together (kept in order), then deleted together.
+            var ticked = new List<int> { world.Reports[10].Id, world.Reports[3].Id };
+            Assert.AreEqual(2, world.ArchiveReports(ticked));
+            Assert.AreEqual(World.MaxReports - 2, world.Reports.Count);
+            Assert.AreEqual(7, world.ArchivedReports.Count);
+            Assert.IsTrue(world.IsArchived(ticked[0]));
+            CollectionAssert.IsOrdered(world.ArchivedReports.Select(r => r.Id).ToList());
+            world.MarkAllReportsRead(archive: true);
+            Assert.IsTrue(world.ArchivedReports.All(r => r.Read));
+            Assert.AreEqual(2, world.DeleteReports(ticked));
+            Assert.IsNull(world.FindReport(ticked[1]));
         }
     }
 

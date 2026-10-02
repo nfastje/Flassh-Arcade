@@ -266,19 +266,28 @@ namespace MedievalWorldConquest.Simulation
 
         void Station(Command command, Village host)
         {
+            // Support from a village its owner has lost since it set out: the troops scatter.
+            var home = FindVillage(command.FromVillageId);
+            if (home == null || home.OwnerId != command.OwnerId) return;
             var group = host.Supports.Find(g => g.FromVillageId == command.FromVillageId);
             if (group == null) host.Supports.Add(group = new SupportGroup { FromVillageId = command.FromVillageId, OwnerId = command.OwnerId, Troops = new int[Units.Count] });
             for (int i = 0; i < Units.Count; i++) group.Troops[i] += command.Troops[i];
 
-            if (IsHuman(command.OwnerId))
+            // A report for the player when their support arrives anywhere, or anyone's arrives at their village.
+            if (IsHuman(command.OwnerId) || IsHuman(host.OwnerId))
+            {
+                var from = FindVillage(command.FromVillageId);
                 AddReport(new BattleReport
                 {
                     Kind = ReportKind.SupportArrived,
                     AttackerVillageId = command.FromVillageId, DefenderVillageId = host.Id,
-                    AttackerVillage = FindVillage(command.FromVillageId)?.Name ?? "?", DefenderVillage = host.Name,
-                    DefenderX = host.X, DefenderY = host.Y,
+                    AttackerVillage = from?.Name ?? "?", DefenderVillage = host.Name,
+                    AttackerX = from?.X ?? 0, AttackerY = from?.Y ?? 0, DefenderX = host.X, DefenderY = host.Y,
+                    AttackerPlayer = FindPlayer(command.OwnerId)?.Name ?? "", DefenderPlayer = OwnerName(host),
+                    AttackerPlayerId = command.OwnerId, DefenderPlayerId = host.OwnerId,
                     AttackerSent = (int[])command.Troops.Clone(),
                 });
+            }
         }
 
         /// <summary>Troops (and any loot) arriving back at their home village.</summary>
@@ -295,8 +304,9 @@ namespace MedievalWorldConquest.Simulation
             home.Wood = Math.Max(home.Wood, Math.Min(cap, home.Wood + command.Loot.Wood));
             home.Clay = Math.Max(home.Clay, Math.Min(cap, home.Clay + command.Loot.Clay));
             home.Iron = Math.Max(home.Iron, Math.Min(cap, home.Iron + command.Loot.Iron));
-            // Raiders home: the Loot Assistant's cycle sends them out again.
+            // Raiders home: the Loot Assistant's cycle sends them out again (and a lord's go out again too).
             if (IsHuman(command.OwnerId)) RunCycle(home);
+            else if (RaidOnReturn) AiRaidOnReturn(command, home);
         }
 
         bool IsHuman(int playerId) => FindPlayer(playerId)?.IsHuman == true;
@@ -380,11 +390,13 @@ namespace MedievalWorldConquest.Simulation
                 report.Loot = loot;
             }
 
-            // Scouts count what's there once the looting is done, before the catapults knock anything down.
+            // Scouts count what's there once the looting is done, before the catapults knock anything down: as
+            // much as enough of them came back to tell.
             if (result.Scouted)
             {
-                report.ScoutedResources = new Cost((int)target.Wood, (int)target.Clay, (int)target.Iron);
-                report.ScoutedLevels = (int[])target.Levels.Clone();
+                report.ScoutSurvival = (int)Math.Floor(100 * (1 - result.AttackerScoutLossFraction) + 1e-9);
+                if (report.SawResources) report.ScoutedResources = new Cost((int)target.Wood, (int)target.Clay, (int)target.Iron);
+                if (report.SawBuildings) report.ScoutedLevels = (int[])target.Levels.Clone();
             }
 
             // Catapults fire last, after the looting, so hitting the warehouse can't shrink the haul.
@@ -419,6 +431,7 @@ namespace MedievalWorldConquest.Simulation
 
             AddStat(command.OwnerId, StatKind.DefeatedAttacking, Total(defenderLost));
             AddStat(command.OwnerId, StatKind.TroopsLost, Total(attackerLost));
+            NoteWarLosses(command.OwnerId, PopulationOf(attackerLost), defenderOwner, PopulationOf(defenderLost));
             AddStat(defenderOwner, StatKind.DefeatedDefending, Total(attackerLost));
             AddStat(command.OwnerId, StatKind.Loot, loot.Wood + loot.Clay + loot.Iron);
 
@@ -429,8 +442,9 @@ namespace MedievalWorldConquest.Simulation
             {
                 report.Kind = ReportKind.Attack;
                 report.DefenderVisible = Total(survivors) > 0 || result.Scouted;
-                AddReport(report);
-                NoteRaid(command, target, report);
+                // A raid cycle's raid that goes to plan is only kept as the village's latest raid, in the Loot Assistant.
+                if (NoteRaid(command, target, report)) StampReport(report);
+                else AddReport(report);
             }
             bool defenderHearsOfIt = IsHuman(defenderOwner);
             foreach (int owner in supportOwners)

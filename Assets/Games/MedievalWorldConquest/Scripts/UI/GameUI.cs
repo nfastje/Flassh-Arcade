@@ -47,9 +47,9 @@ namespace MedievalWorldConquest
         public MapPanel Map { get; private set; }
         View currentView;
         World lastWorld;
-        readonly Label[] resourceValues = new Label[3];
+        readonly SteadyNumber[] resourceValues = new SteadyNumber[3];
         readonly VisualElement[] resourceChips = new VisualElement[3];
-        Label storageValue, populationValue;
+        SteadyNumber storageValue, populationValue;
 
         // Start screen (the save slots) and the new-world screen
         VisualElement startScreen, slotRow, newWorldScreen;
@@ -134,6 +134,7 @@ namespace MedievalWorldConquest
             BuildMenu();
             BuildConfirm();
             BuildEndScreen();
+            BuildCatchUp();
             BuildToast();
             BuildTooltips(); // last, so it's drawn over everything
         }

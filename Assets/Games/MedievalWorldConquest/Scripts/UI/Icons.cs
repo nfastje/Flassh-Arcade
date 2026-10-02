@@ -50,6 +50,9 @@ namespace MedievalWorldConquest
         public static Texture2D Ledger => Get("ledger", DrawLedger);
         public static Texture2D Loot => Get("loot", DrawSack);
         public static Texture2D Tribe => Get("tribe", DrawBanner);
+        public static Texture2D Pencil => Get("pencil", DrawPencil);
+        public static Texture2D Check => Get("check", DrawCheck);
+        public static Texture2D Coin => Get("coin", DrawCoin);
         public static Texture2D Unit(UnitType type) => Get("unit" + (int)type, p => DrawUnit(p, type));
 
         static Texture2D Get(string key, Action<Painter> draw)
@@ -225,6 +228,36 @@ namespace MedievalWorldConquest
             p.Rect(8.5f, 5, 26, 19, new Color(0.25f, 0.4f, 0.8f));
             p.Triangle(26.5f, 4.5f, 26.5f, 19.5f, 21, 12, default, erase: true); // the swallow-tail notch
             p.Circle(15, 12, 3.5f, Gold);
+        }
+
+        static void DrawPencil(Painter p)
+        {
+            // A pencil pointing down to the left: rename.
+            p.Line(23, 9, 26.5f, 5.5f, 6, new Color(0.9f, 0.5f, 0.5f));      // the eraser
+            p.Line(21, 11, 23, 9, 6, Steel);                                  // its band
+            p.Line(11, 21, 21, 11, 6, Gold);                                  // the body
+            p.Triangle(8.9f, 18.9f, 13.1f, 23.1f, 5, 27, LightWood);          // the sharpened wood
+            p.Triangle(5, 27, 6.4f, 23.4f, 8.6f, 25.6f, new Color(0.2f, 0.2f, 0.2f)); // the lead
+        }
+
+        static void DrawCoin(Painter p)
+        {
+            // A gold coin stamped with a crown, catching the light at its top left.
+            p.Circle(16, 16, 13, DarkGold);
+            p.Circle(16, 16, 10.5f, Gold);
+            p.Rect(10.5f, 18, 21.5f, 21, DarkGold);                 // the crown's band
+            p.Triangle(10.5f, 18.5f, 12.5f, 11, 14.5f, 18.5f, DarkGold);
+            p.Triangle(14, 18.5f, 16, 9.5f, 18, 18.5f, DarkGold);
+            p.Triangle(17.5f, 18.5f, 19.5f, 11, 21.5f, 18.5f, DarkGold);
+            p.Ellipse(11, 9.5f, 3, 1.8f, new Color(1f, 0.95f, 0.7f));
+        }
+
+        static void DrawCheck(Painter p)
+        {
+            // A tick, in ink: a ticked checkbox.
+            var ink = new Color(0.42f, 0.24f, 0.08f);
+            p.Line(6, 17, 13, 24, 5, ink);
+            p.Line(13, 24, 26, 8, 5, ink);
         }
 
         // ---------------------------------------------------------------- units

@@ -52,6 +52,13 @@ namespace MedievalWorldConquest.Simulation
         public int LootWood, LootClay, LootIron;
         /// <summary>The building levels its scouts last saw (for the mines, warehouse and hiding place), or null.</summary>
         public int[] SeenLevels;
+
+        /// <summary>
+        /// Scouting that failed (the village's own scouts outnumbered ours): how many scouts it takes to get through,
+        /// as far as the lord has learned, how many tries in a row have failed, and when to try again (0: none failed).
+        /// </summary>
+        public int ScoutsNeeded, ScoutFails;
+        public double ScoutAgainAt;
     }
 
     /// <summary>A player's standing in the rankings.</summary>

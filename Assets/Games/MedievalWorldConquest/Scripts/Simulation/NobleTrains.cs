@@ -143,14 +143,20 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>
-        /// An attack that arrives at a village its own side has won since it set out (the train's first nobleman
-        /// took it, or a tribe mate or ally did) doesn't fight: the troops turn round and go home. (An attack sent at
-        /// a friend on purpose still lands.)
+        /// An attack that arrives at a village its own side has won since it set out doesn't fight: if its own
+        /// owner won it (an earlier nobleman of the train), the troops stay to guard it; if a tribe mate or ally did,
+        /// they turn round and go home. (An attack sent at a friend on purpose still lands.)
         /// </summary>
         bool TurnBackIfFriendly(Command command, Village from, Village to)
         {
             if (to.IsBarbarian || command.TargetOwnerId == -2 || to.OwnerId == command.TargetOwnerId) return false;
-            if (to.OwnerId != command.OwnerId && !AreFriendly(command.OwnerId, to.OwnerId)) return false;
+            // The rest of a noble train reaching a village the train has just won: it stays to guard it.
+            if (to.OwnerId == command.OwnerId)
+            {
+                Guard(command.OwnerId, from, to, command.Troops);
+                return true;
+            }
+            if (!AreFriendly(command.OwnerId, to.OwnerId)) return false;
             var slowest = SlowestUnit(command.Troops);
             double seconds = slowest.HasValue ? TravelSeconds(to, from, slowest.Value) : 0;
             March(CommandKind.Return, command.OwnerId, to, from, command.Troops, default, seconds);

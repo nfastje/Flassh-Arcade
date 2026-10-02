@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MedievalWorldConquest.Simulation;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -76,7 +77,7 @@ namespace MedievalWorldConquest
                 // Production per hour is in the tooltip (and the village pane), as in Tribal Wars, to keep the bar short.
                 var chip = Element("resource");
                 chip.Add(Icons.Element(Icons.Resource((ResourceType)i), 20, "resource-icon"));
-                resourceValues[i] = Text("", "resource-value");
+                resourceValues[i] = new SteadyNumber("resource-value");
                 chip.Add(resourceValues[i]);
                 resourceChips[i] = chip;
                 here.Add(chip);
@@ -84,13 +85,13 @@ namespace MedievalWorldConquest
             var storage = Element("resource");
             storage.tooltip = "Warehouse capacity";
             storage.Add(Icons.Element(Icons.Storage, 20, "resource-icon"));
-            storageValue = Text("", "resource-value");
+            storageValue = new SteadyNumber("resource-value");
             storage.Add(storageValue);
             here.Add(storage);
             var population = Element("resource");
             population.tooltip = "Population (used / farm limit)";
             population.Add(Icons.Element(Icons.Population, 20, "resource-icon"));
-            populationValue = Text("", "resource-value");
+            populationValue = new SteadyNumber("resource-value", "resource-value--wide");
             population.Add(populationValue);
             here.Add(population);
             top.Add(here);
@@ -291,7 +292,7 @@ namespace MedievalWorldConquest
             RefreshTooltip();
             var v = world.PlayerVillage;
             if (v == null) return;
-            var own = world.HumanVillages();
+            var own = world.HumanVillagesByName();
             int index = own.IndexOf(v);
             SetText(playerName, world.HumanPlayer?.Name ?? "");
             SetText(villageName, v.Name);
@@ -313,14 +314,14 @@ namespace MedievalWorldConquest
             {
                 var r = (ResourceType)i;
                 double stock = v.Stock(r);
-                SetText(resourceValues[i], $"{Math.Floor(stock):N0}");
+                resourceValues[i].SetText($"{Math.Floor(stock):N0}");
                 // Rates are per real hour, like every duration in the UI.
                 resourceChips[i].tooltip = $"{r}: +{v.ProductionPerHour(r) * world.Settings.Speed:N0} per hour";
                 resourceValues[i].EnableInClassList("resource-value--full", stock >= capacity);
             }
-            SetText(storageValue, $"{capacity:N0}");
+            storageValue.SetText($"{capacity:N0}");
             int used = v.PopulationUsed, cap = v.PopulationCapacity;
-            SetText(populationValue, $"{used:N0}/{cap:N0}");
+            populationValue.SetText($"{used:N0}/{cap:N0}");
             populationValue.EnableInClassList("resource-value--full", used >= cap);
 
             int unread = world.UnreadReports;
@@ -331,9 +332,12 @@ namespace MedievalWorldConquest
             var incoming = world.HumanPlayer != null ? world.IncomingAttacks(world.HumanPlayer.Id) : new List<Command>();
             Show(incomingWarning, incoming.Count > 0);
             if (incoming.Count > 0) SetText(incomingWarning, $"{incoming.Count} incoming");
-            var moving = TrackedMovements(world);
+            // (The list under the village is the village's own: switch villages, from the banner's count or the
+            // villages overview, to see another's.)
+            var here = world.PlayerVillage;
+            var moving = TrackedMovements(world, here);
             Show(movementsPanel, moving.Count > 0 && VillageTabActive && !buildingWindow.IsOpen);
-            if (moving.Count > 0 && VillageTabActive) RefreshMovements(world, moving, incoming.Count);
+            if (moving.Count > 0 && VillageTabActive) RefreshMovements(world, moving, incoming.Count(c => c.ToVillageId == here?.Id));
             villageWindow.Refresh(world);
             playerWindow.Refresh(world);
             tribeWindow.Refresh(world);
@@ -367,15 +371,15 @@ namespace MedievalWorldConquest
         readonly List<MovementRow> movementRows = new List<MovementRow>();
 
         /// <summary>
-        /// What the village view's movement list tracks, soonest first: every troop movement to or from the
-        /// player's villages (attacks and support coming in, the player's own attacks and support going out, troops
-        /// coming home). Merchants are at the market and the rally point.
+        /// What the village view's movement list tracks, soonest first: the troop movements to or from the village
+        /// being viewed (attacks and support coming in, its own attacks and support going out, its troops coming
+        /// home). Merchants are at the market and the rally point.
         /// </summary>
-        static List<Command> TrackedMovements(World world)
+        static List<Command> TrackedMovements(World world, Village here)
         {
             var human = world.HumanPlayer;
-            if (human == null) return new List<Command>();
-            return world.MovementsFor(human.Id).FindAll(c => !c.IsTrade);
+            if (human == null || here == null) return new List<Command>();
+            return world.MovementsFor(human.Id).FindAll(c => !c.IsTrade && (c.ToVillageId == here.Id || c.FromVillageId == here.Id));
         }
 
         /// <summary>One row per movement, with links to the villages and players involved; rows are reused.</summary>

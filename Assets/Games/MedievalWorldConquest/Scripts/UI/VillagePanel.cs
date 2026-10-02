@@ -177,11 +177,17 @@ namespace MedievalWorldConquest
             Show(questClaim, world.QuestReady);
         }
 
-        /// <summary>Only the units the village has at home, as in Tribal Wars ("657 Spear fighters").</summary>
+        /// <summary>
+        /// The units the village has at home, as in Tribal Wars ("657 Spear fighters"), then the support stationed
+        /// there (from the player's other villages or anyone else's), added up and set apart.
+        /// </summary>
         void RefreshUnits(Village v)
         {
-            string signature = "";
-            for (int i = 0; i < Units.Count; i++) signature += v.TroopCount((UnitType)i) + ",";
+            var support = new int[Units.Count];
+            foreach (var g in v.Supports)
+                for (int i = 0; i < Units.Count && i < g.Troops.Length; i++) support[i] += g.Troops[i];
+            string signature = v.Id + ":";
+            for (int i = 0; i < Units.Count; i++) signature += v.TroopCount((UnitType)i) + "/" + support[i] + ",";
             if (signature == unitSignature) return;
             unitSignature = signature;
 
@@ -199,6 +205,25 @@ namespace MedievalWorldConquest
                 unitList.Add(line);
             }
             if (!any) unitList.Add(Text("No troops at home.", "row-info"));
+
+            bool supported = false;
+            foreach (var type in Units.InDisplayOrder)
+            {
+                int n = support[(int)type];
+                if (n == 0) continue;
+                if (!supported)
+                {
+                    var heading = Text("Support", "pane-subtitle");
+                    heading.tooltip = "Troops from other villages stationed here. Send them home from the rally point.";
+                    unitList.Add(heading);
+                    supported = true;
+                }
+                var line = Element("pane-line", "pane-line--support");
+                line.Add(Icons.Element(Icons.Unit(type), 18, "pane-icon"));
+                line.Add(Text($"{n:N0}", "pane-count"));
+                line.Add(Text(Units.Get(type).Name, "pane-name"));
+                unitList.Add(line);
+            }
         }
 
         void RefreshBadges(World world, Village v)

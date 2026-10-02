@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using FlasshArcade;
 using MedievalWorldConquest.Simulation;
 using UnityEngine;
@@ -44,21 +46,67 @@ namespace MedievalWorldConquest
             world = loaded;
             double away = SaveGame.CatchUpRealSeconds(world, savedAt, DateTime.UtcNow);
             double before = world.Now;
+            StartCoroutine(CatchUp(away, () =>
+            {
+                ListenForSounds(); // after catching up: what happened while away doesn't all play at once
+                ShowVillage(world.Settings.Seed);
+                CreateMap();
+                lastAnnouncedReport = world.NextReportId - 1; // reports from the catch-up wait in the Reports tab
+                lastAnnouncedMessage = world.NextMessageId - 1;
+                ui.ShowGame(world);
+                if (world.Now - before >= 60)
+                    ui.ShowToast($"While you were away, {World.FormatDuration(world.Now - before)} passed in the realm.", 5f);
+                else
+                    ui.ShowToast($"Welcome back to {world.PlayerVillage.Name}.", 3f);
+            }));
+        }
+
+        /// <summary>Game seconds simulated between looks at the clock while catching up.</summary>
+        const double CatchUpStep = 3600;
+
+        /// <summary>Real seconds spent simulating per frame while catching up; the rest of the frame draws the progress.</summary>
+        const double CatchUpFrameBudget = 0.1;
+
+        /// <summary>A frame longer than this (real seconds: the game was in the background) catches up like a load does.</summary>
+        const float CatchUpGap = 2f;
+
+        /// <summary>Whether the world is catching up on time spent away (the game waits; nothing is saved meanwhile).</summary>
+        bool catchingUp;
+
+        /// <summary>
+        /// Runs the world forward by <paramref name="awayRealSeconds"/> a slice per frame, so the screen stays alive.
+        /// If it takes more than one slice, a popup shows how far it has got. Then <paramref name="done"/> runs. Saving
+        /// waits until it's over: the save on disk is from before, so closing the game meanwhile loses nothing.
+        /// </summary>
+        IEnumerator CatchUp(double awayRealSeconds, Action done)
+        {
+            catchingUp = true;
             // (While the player was away, nobody expects them to answer calls for help.)
             world.PlayerAway = true;
-            world.AdvanceByRealSeconds(away);
-            world.PlayerAway = false;
+            double start = world.Now, target = start + Math.Max(0, awayRealSeconds) * world.Settings.Speed;
+            int days = Math.Max(1, (int)Math.Ceiling((target - start) / World.SecondsPerDay));
+            var clock = new System.Diagnostics.Stopwatch();
+            bool showing = false;
+            while (true)
+            {
+                clock.Restart();
+                while (world.Now < target && clock.Elapsed.TotalSeconds < CatchUpFrameBudget)
+                    world.AdvanceTo(Math.Min(target, world.Now + CatchUpStep));
+                if (world.Now >= target) break;
 
-            ListenForSounds(); // after catching up: what happened while away doesn't all play at once
-            ShowVillage(world.Settings.Seed);
-            CreateMap();
-            lastAnnouncedReport = world.NextReportId - 1; // reports from the catch-up wait in the Reports tab
-            lastAnnouncedMessage = world.NextMessageId - 1;
-            ui.ShowGame(world);
-            if (world.Now - before >= 60)
-                ui.ShowToast($"While you were away, {World.FormatDuration(world.Now - before)} passed in the realm.", 5f);
-            else
-                ui.ShowToast($"Welcome back to {world.PlayerVillage.Name}.", 3f);
+                if (!showing)
+                {
+                    showing = true;
+                    ui.ShowCatchUp(world.HumanPlayer?.Name ?? "You", awayRealSeconds);
+                }
+                int day = Math.Min(days, (int)((world.Now - start) / World.SecondsPerDay) + 1);
+                ui.ShowCatchUpProgress(day, days, (world.Now - start) / (target - start));
+                yield return null;
+            }
+            world.PlayerAway = false;
+            catchingUp = false;
+            ui.HideCatchUp();
+            done?.Invoke();
         }
 
         public void QueueBuild(BuildingType type)
@@ -198,15 +246,34 @@ namespace MedievalWorldConquest
         public void RenameVillage(string name)
         {
             var v = world?.PlayerVillage;
+            if (v != null) RenameVillage(v.Id, name);
+        }
+
+        /// <summary>Renames one of the player's villages (from the Account Manager).</summary>
+        public void RenameVillage(int villageId, string name)
+        {
+            var v = world?.FindVillage(villageId);
             if (v == null) return;
             if (world.RenameVillage(v, name)) ui.ShowToast($"Your village is now called {v.Name}.");
             else if (string.IsNullOrWhiteSpace(name)) ui.ShowToast("A village needs a name.");
         }
 
+        /// <summary>Calls the player's support troops stationed in another village back home (from the rally point they came from).</summary>
         public void Recall(int hostVillageId, int fromVillageId)
         {
             var host = world?.FindVillage(hostVillageId);
-            if (host != null && world.Recall(host, fromVillageId) != null) ui.ShowToast("Support recalled. The troops are heading home.");
+            var group = host?.Supports.Find(g => g.FromVillageId == fromVillageId);
+            if (group == null || group.OwnerId != world.HumanPlayer?.Id) return;
+            if (world.Recall(host, fromVillageId) != null) ui.ShowToast("Support recalled. The troops are heading home.");
+        }
+
+        /// <summary>Sends support stationed in one of the player's villages (theirs or anyone's) back where it came from.</summary>
+        public void SendSupportHome(int hostVillageId, int fromVillageId)
+        {
+            var host = world?.FindVillage(hostVillageId);
+            if (host == null || host.OwnerId != world.HumanPlayer?.Id) return;
+            var from = world.FindVillage(fromVillageId);
+            if (world.Recall(host, fromVillageId) != null) ui.ShowToast($"The support from {from?.Name ?? "elsewhere"} is heading home.");
         }
 
         public void MarkReportRead(int id)
@@ -215,9 +282,11 @@ namespace MedievalWorldConquest
             if (report != null) report.Read = true;
         }
 
-        public void MarkAllReportsRead() => world?.MarkAllReportsRead();
+        public void MarkAllReportsRead(bool archive) => world?.MarkAllReportsRead(archive);
 
-        public void DeleteReport(int id) => world?.DeleteReport(id);
+        public void DeleteReports(ICollection<int> ids) => world?.DeleteReports(ids);
+
+        public void ArchiveReports(ICollection<int> ids) => world?.ArchiveReports(ids);
 
         public void CancelLastBuild()
         {

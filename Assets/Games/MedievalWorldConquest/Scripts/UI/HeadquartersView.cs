@@ -44,7 +44,8 @@ namespace MedievalWorldConquest
                 var row = Element("build-row", "hq-row");
                 var left = Element("hq-row-name");
                 var header = Element("row-header");
-                header.Add(Text(def.Name, "row-title"));
+                var type = def.Type;
+                header.Add(Link(def.Name, () => game.OpenBuilding(type), "row-title-link"));
                 var level = Text("", "row-level");
                 header.Add(level);
                 left.Add(header);

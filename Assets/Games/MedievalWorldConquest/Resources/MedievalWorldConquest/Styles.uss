@@ -204,6 +204,27 @@
     max-width: 620px;
 }
 
+/* Catching up on time spent away: what happened, and a bar of the days simulated. */
+.catch-up-panel {
+    width: 560px;
+}
+
+.catch-up-title {
+    font-size: 20px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.catch-up-progress {
+    width: 100%;
+    height: 16px;
+    border-radius: 8px;
+    margin-top: 14px;
+    margin-bottom: 8px;
+}
+
 /* The winning tribes and top ten lords when a world ends. */
 .end-standings {
     max-height: 360px;
@@ -260,13 +281,35 @@
     margin-right: 4px;
 }
 
+/* Each value keeps a fixed width (room for "400,000"; the population for "24,000/24,000"), right-aligned, so the
+   bar doesn't shift as the numbers grow; and each character has a cell of its own (see SteadyNumber), so the
+   digits don't shift either. */
 .resource-value {
     font-size: 15px;
     -unity-font-style: bold;
     color: rgb(245, 235, 210);
     white-space: nowrap;
+    margin: 0 0 0 4px;
+    padding: 0;
+    min-width: 66px;
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
+.resource-value--wide {
+    min-width: 118px;
+}
+
+/* One character of a steady number: every digit the same width, commas and slashes narrower. */
+.steady-cell {
+    width: 10px;
     margin: 0;
     padding: 0;
+    -unity-text-align: middle-center;
+}
+
+.steady-cell--narrow {
+    width: 4px;
 }
 
 .resource-value--full {
@@ -1169,7 +1212,7 @@
 }
 
 .send-panel {
-    width: 620px;
+    width: 860px;
     max-height: 90%;
     align-items: stretch;
 }
@@ -2415,4 +2458,450 @@
     font-size: 14px;
     -unity-font-style: bold;
     margin-left: 3px;
+}
+
+/* ---------------------------------------------------------------- send dialog: a layout that never moves */
+
+/* Nothing in the dialog gives way (or overlaps) when space runs short. */
+.send-panel > * {
+    flex-shrink: 0;
+}
+
+/* The units in two columns: foot and siege on the left, horse and noblemen on the right. */
+.send-grid {
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.send-column {
+    width: 49%;
+}
+
+.send-column .send-name {
+    width: 118px;
+}
+
+.send-column .send-amount {
+    width: 72px;
+}
+
+/* A unit with none at home, or an option that doesn't apply to the troops chosen: grayed out. */
+.send-row:disabled {
+    opacity: 0.45;
+}
+
+/* Room for the longest summary (a noble train's, with support timing) and two lines of warnings, always. */
+.send-summary {
+    min-height: 110px;
+    -unity-text-align: upper-center;
+}
+
+.send-reason {
+    min-height: 32px;
+    -unity-text-align: middle-center;
+}
+
+/* ---------------------------------------------------------------- reports: the list or the archive, with boxes to tick */
+
+.reports-tabs {
+    justify-content: flex-start;
+}
+
+.reports-tabs > .option {
+    margin: 0 6px 6px 0;
+    padding: 4px 14px;
+    font-size: 15px;
+}
+
+.report-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.report-row > .report-item {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+/* The checkboxes: small parchment squares like the report cards, gold like a chosen card when ticked. */
+.check-box {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-width: 2px;
+    border-color: rgba(122, 90, 51, 0.45);
+    border-radius: 4px;
+}
+
+.check-box:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+
+.check-box--checked,
+.check-box--checked:hover {
+    border-color: rgb(192, 140, 40);
+    background-color: rgba(255, 225, 140, 0.75);
+}
+
+.check-box:disabled {
+    opacity: 0.4;
+}
+
+.report-check {
+    margin: 0 8px 5px 2px;
+}
+
+.reports-select-all {
+    margin-bottom: 2px;
+}
+
+.reports-select-all > .report-check {
+    margin-bottom: 0;
+}
+
+/* A report in a village's window: on one line, its start always showing, cut off at the end if it's too long. */
+.report-link-line {
+    flex-wrap: nowrap;
+}
+
+.report-link-time {
+    flex-shrink: 0;
+}
+
+.report-link {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -unity-text-align: middle-left;
+}
+
+/* ---------------------------------------------------------------- the Account Manager: renaming a village */
+
+.manager-village-link {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -unity-text-align: middle-left;
+}
+
+.manager-coords {
+    flex-shrink: 0;
+}
+
+/* The pencil: just the icon, a faint box under the pointer. */
+.pencil-btn.unity-button {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-radius: 4px;
+    padding: 0;
+    margin: 0 4px 0 0;
+    min-width: 0;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+}
+
+.pencil-btn.unity-button:hover:enabled,
+.pencil-btn.unity-button:active:enabled {
+    background-color: rgba(122, 90, 51, 0.18);
+    opacity: 1;
+}
+
+.pencil-btn.unity-button:focus {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.rename-field.manager-rename-field {
+    width: auto;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    height: 28px;
+    margin: 0 4px 0 0;
+}
+
+.manager-rename-btn {
+    min-width: 0;
+    width: 32px;
+    height: 26px;
+    padding: 0;
+    margin: 0 2px 0 0;
+    font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- the Loot Assistant: each village's latest raid */
+
+.loot-report-cell {
+    width: 100px;
+    flex-shrink: 0;
+    margin-left: 6px;
+    align-items: flex-start;
+}
+
+/* The Account Manager's troop share: how much of a village's spending goes on troops. */
+/* The label, then the five choices sharing what's left of the row equally (so they always fit the popup). */
+.manager-share-row {
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: nowrap;
+    margin-top: 8px;
+    padding: 0 8px;
+}
+
+.manager-share-label {
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.manager-share-row > .manager-share {
+    min-width: 0;
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    margin: 2px 3px 2px 0;
+    padding: 3px 0;
+    font-size: 14px;
+    -unity-text-align: middle-center;
+}
+
+/* The troop targets' population against the farm's room: red when even a full farm couldn't hold them. */
+.manager-troop-population {
+    margin-top: 6px;
+    white-space: normal;
+}
+
+.manager-troop-population--over {
+    color: rgb(150, 40, 25);
+}
+
+/* ---------------------------------------------------------------- gold coins at the academy */
+
+.coin-stats {
+    flex-direction: row;
+    align-items: center;
+    margin: 2px 0 6px 0;
+}
+
+.coin-stat {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 22px;
+}
+
+.coin-stat-icon {
+    margin-right: 6px;
+}
+
+.coin-stat-value {
+    font-size: 24px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+    margin-right: 5px;
+}
+
+.coin-stat-value--none {
+    color: rgb(150, 40, 25);
+}
+
+.coin-stat-label {
+    font-size: 14px;
+    color: rgb(110, 84, 54);
+}
+
+.coin-next {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.coin-next-bar {
+    width: 180px;
+    height: 10px;
+    margin: 0 10px 0 0;
+}
+
+.coin-next-fill {
+    background-color: rgb(214, 164, 40);
+}
+
+.coin-next-text {
+    margin-top: 0;
+}
+
+.coin-inline-icon {
+    margin: 0 4px;
+}
+
+.coin-hint {
+    margin-bottom: 6px;
+    white-space: normal;
+}
+
+.coin-mint-title {
+    flex-direction: row;
+    align-items: center;
+}
+
+/* Support stationed in the village, under its own units in the village pane: set apart, a quieter color. */
+.pane-subtitle {
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: rgb(110, 84, 54);
+    padding: 4px 8px 1px 8px;
+}
+
+.pane-line--support .pane-count,
+.pane-line--support .pane-name {
+    color: rgb(40, 80, 140);
+}
+
+/* A building's name in the headquarters' list: a link to its own screen, as big as the row titles. */
+.row-title-link {
+    font-size: 15px;
+    margin-left: 0;
+    padding-left: 0;
+}
+
+/* A village's troop targets in the Account Manager: icons and counts on a line (wrapping if need be). */
+.manager-troops {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.manager-troops-share {
+    margin-right: 8px;
+    -unity-font-style: bold;
+}
+
+.manager-troop-target {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 9px;
+}
+
+.manager-troop-icon {
+    margin-right: 3px;
+}
+
+.manager-troop-count {
+    margin: 0;
+}
+
+/* A village's stores in its window: as on the top bar (icons, numbers whose digits stay put), in the window's ink. */
+.stores-line {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.stores-chip {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 12px;
+}
+
+.stores-value {
+    flex-direction: row;
+    justify-content: flex-end;
+    min-width: 66px;
+    margin-left: 3px;
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(58, 42, 24);
+}
+
+.stores-value--full {
+    color: rgb(170, 45, 30);
+}
+
+/* The villages overview's totals: a line of icons with counts. */
+.overview-summary {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.overview-summary-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.overview-summary-text {
+    margin: 0 8px 0 0;
+}
+
+.overview-summary-chip {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.overview-summary-count {
+    margin: 0 0 0 3px;
+    -unity-font-style: bold;
+}
+
+/* The rally point's list of the player's villages, to pick a target from. */
+.village-picker {
+    position: absolute;
+    width: 300px;
+    max-height: 260px;
+    background-color: rgb(250, 240, 214);
+    border-width: 2px;
+    border-color: rgb(122, 90, 51);
+    border-radius: 6px;
+    padding-bottom: 4px;
+}
+
+.village-picker-scroll {
+    max-height: 220px;
+}
+
+.village-picker-item {
+    -unity-text-align: middle-left;
+    align-self: flex-start;
+    margin: 3px 8px;
+}
+
+.rally-choose-village {
+    margin-left: 6px;
+}
+
+/* The villages overview's Recruiting column: the units in training as icons with counts, on one line
+   (wrapping within the column rather than running into the next). */
+.overview-recruiting {
+    width: 190px;
+    flex-shrink: 0;
+    padding-left: 8px;
+}
+
+.overview-recruiting-units {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.overview-recruit-unit {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 8px;
+}
+
+.overview-recruit-count {
+    margin-left: 2px;
 }

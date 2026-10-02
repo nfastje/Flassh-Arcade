@@ -179,7 +179,7 @@ namespace MedievalWorldConquest
                 if (!markers.TryGetValue(v.Id, out var marker))
                 {
                     // In front of the terrain and glows; lower villages overlap the ones above them. Each village has
-                    // three layers: the outline marking the player's own, the picture, and the owner's dot.
+                    // two layers: the picture, and the owner's dot.
                     int order = (10 + World.MapSize - v.Y) * 3;
                     var center = FieldCenter(v.X, v.Y);
                     marker = AddSprite("Village", VillageArt.MapVillage(0, false), order + 1);
@@ -194,14 +194,10 @@ namespace MedievalWorldConquest
                     dot.transform.localScale = Vector3.one * 0.28f;
                     dots[v.Id] = dot;
 
-                    var ring = AddSprite("Own village", VillageArt.MapRing, order);
-                    ring.transform.position = center;
-                    ring.transform.localScale = new Vector3(0.97f * FieldWidth, 0.97f, 1f);
-                    rings[v.Id] = ring;
                 }
 
                 // As on Tribal Wars' map: villages in full color by size, barbarians gray, and a dot in the corner in
-                // the owner's color. Yours are outlined too: yellow, and white for the one you're viewing from.
+                // the owner's color (yours yellow, and white for the one you're viewing from).
                 bool mine = human != null && v.OwnerId == human.Id;
                 int key = TierOf(v.Points) * 2 + (v.IsBarbarian ? 1 : 0);
                 if (markerKeys[v.Id] != key)
@@ -211,15 +207,12 @@ namespace MedievalWorldConquest
                 }
                 dots[v.Id].enabled = !v.IsBarbarian;
                 dots[v.Id].color = OwnerColor(world, v);
-                rings[v.Id].enabled = mine;
-                if (mine) rings[v.Id].color = dots[v.Id].color;
                 if (mine && v == world.PlayerVillage) homeGlow.transform.position = FieldCenter(v.X, v.Y);
             }
         }
 
         readonly Dictionary<int, SpriteRenderer> dots = new Dictionary<int, SpriteRenderer>();
         int shownCurrent = -1;
-        readonly Dictionary<int, SpriteRenderer> rings = new Dictionary<int, SpriteRenderer>();
 
         public void Select(Village v)
         {
@@ -364,15 +357,27 @@ namespace MedievalWorldConquest
                             if ((y + (int)(detail * 6)) % 5 == 0 && lx % 4 != 0) c = Color.Lerp(c, Color.white, 0.18f); // ripples
                             break;
                         case TerrainType.Forest:
-                            c = Woods * (0.85f + 0.3f * detail);
-                            // A tree clump in each forest field.
-                            float half = PixelsPerField / 2f;
-                            float tree = Vector2.Distance(new Vector2(lx, ly), new Vector2(half - 0.5f + (fx * 7 + fy) % 3 - 1, half));
-                            if (tree < PixelsPerField * 0.33f) c = Woods * 0.7f;
+                        {
+                            // Two little trees on the meadow, set one way or the other.
+                            c = Meadow * (0.9f + 0.2f * detail);
+                            bool flip = (fx * 7 + fy) % 2 == 1;
+                            float unit = PixelsPerField / 6f;
+                            var px0 = new Vector2(lx + 0.5f, ly + 0.5f) / unit;
+                            float a = Vector2.Distance(px0, new Vector2(flip ? 2f : 4f, 2.4f));
+                            float b = Vector2.Distance(px0, new Vector2(flip ? 4.1f : 2f, 4f));
+                            if (a < 1.7f || b < 1.5f) c = Woods * (0.8f + 0.3f * detail);
+                            if (a < 0.8f || b < 0.7f) c = Woods * 0.62f;
                             break;
+                        }
                         case TerrainType.Hills:
-                            c = Rock * (0.8f + 0.4f * detail);
+                        {
+                            // A rocky mound on the meadow, lit from above.
+                            c = Meadow * (0.9f + 0.2f * detail);
+                            float half = PixelsPerField / 2f;
+                            float dx = (lx - half + 0.5f) / (PixelsPerField * 0.45f), dy = (ly - PixelsPerField * 0.3f) / (PixelsPerField * 0.55f);
+                            if (dx * dx + dy * dy < 1 && ly >= PixelsPerField * 0.25f) c = Rock * (ly > half ? 1.05f : 0.85f);
                             break;
+                        }
                         default:
                             c = Meadow * (0.9f + 0.2f * detail);
                             break;

@@ -5,7 +5,9 @@ namespace MedievalWorldConquest.Simulation
     public enum TerrainType
     {
         Grass,
+        /// <summary>A field of woods: scenery on the empty land only (no effect on play, and not on the minimap).</summary>
         Forest,
+        /// <summary>A hill: scenery, like woods.</summary>
         Hills,
         Water,
     }
@@ -21,6 +23,9 @@ namespace MedievalWorldConquest.Simulation
         /// <summary>The chance of any field being a pond.</summary>
         public const double PondChance = 0.005;
 
+        /// <summary>The chance of any (other) field being woods, or a hill: single fields of scenery, scattered.</summary>
+        public const double WoodsChance = 0.06, HillsChance = 0.03;
+
         public static TerrainType At(int seed, int x, int y)
         {
             if (x < 0 || y < 0 || x >= World.MapSize || y >= World.MapSize) return TerrainType.Water;
@@ -29,37 +34,13 @@ namespace MedievalWorldConquest.Simulation
 
             // Water is only the odd pond, a single field, as on Tribal Wars' maps: about one field in two hundred.
             if (Hash(seed ^ 0x6A09E667, x, y) < PondChance) return TerrainType.Water;
-            double height = Fbm(seed, x * 0.07, y * 0.07);
-            if (height > 0.66) return TerrainType.Hills;
-            if (Fbm(seed + 7919, x * 0.11, y * 0.11) > 0.56) return TerrainType.Forest;
+            // The rest is open plains, with a field of woods or a hill here and there to break it up (scenery only:
+            // villages may stand anywhere but water, and the minimap shows them all as plains).
+            double scenery = Hash(seed ^ 0x3C6EF372, x, y);
+            if (scenery < WoodsChance) return TerrainType.Forest;
+            if (scenery < WoodsChance + HillsChance) return TerrainType.Hills;
             return TerrainType.Grass;
         }
-
-        /// <summary>Smooth noise in 0..1, layered at several scales.</summary>
-        public static double Fbm(int seed, double x, double y)
-        {
-            double sum = 0, amplitude = 0.5, norm = 0, frequency = 1;
-            for (int octave = 0; octave < 4; octave++)
-            {
-                sum += amplitude * ValueNoise(seed + octave * 131, x * frequency, y * frequency);
-                norm += amplitude;
-                amplitude *= 0.5;
-                frequency *= 2;
-            }
-            return sum / norm;
-        }
-
-        static double ValueNoise(int seed, double x, double y)
-        {
-            int x0 = (int)Math.Floor(x), y0 = (int)Math.Floor(y);
-            double fx = x - x0, fy = y - y0;
-            double sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy); // smoothstep
-            double a = Hash(seed, x0, y0), b = Hash(seed, x0 + 1, y0);
-            double c = Hash(seed, x0, y0 + 1), d = Hash(seed, x0 + 1, y0 + 1);
-            return Lerp(Lerp(a, b, sx), Lerp(c, d, sx), sy);
-        }
-
-        static double Lerp(double a, double b, double t) => a + (b - a) * t;
 
         /// <summary>A repeatable pseudo-random number in 0..1 for a grid point (or any pair of numbers).</summary>
         internal static double Hash(int seed, int x, int y)

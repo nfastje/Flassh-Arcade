@@ -93,7 +93,7 @@ namespace MedievalWorldConquest
             var tribe = world.TribeOf(human);
 
             string now = TribeSignature(world, tribe) + "|" + human.AskedToJoinTribe + "|" + world.HoldTribeId + ":" + world.HoldSince
-                         + "|" + string.Join(",", world.SwapCandidates().ConvertAll(p => p.Id.ToString()));
+                         + "|" + string.Join(",", world.SwapCandidates().ConvertAll(p => p.Id.ToString())) + "|" + PeaceSignature(world, tribe);
             if (now != signature)
             {
                 signature = now;
@@ -104,6 +104,19 @@ namespace MedievalWorldConquest
             // (Kept between rebuilds, and brought up to date every second.)
             if (tribe != null) underAttack.Refresh(world, tribe);
         }
+
+        /// <summary>For each tribe at war with the player's: the real minutes until peace can be offered again (so the buttons keep up).</summary>
+        static string PeaceSignature(World world, Tribe mine)
+        {
+            if (mine == null) return "";
+            var parts = new List<string>();
+            foreach (var t in world.ActiveTribes())
+                if (t != mine && world.Relation(mine, t) == RelationKind.Enemy) parts.Add(t.Id + ":" + PeaceWaitMinutes(world, mine, t));
+            return string.Join(",", parts);
+        }
+
+        public static int PeaceWaitMinutes(World world, Tribe mine, Tribe other) =>
+            (int)Math.Ceiling(Math.Max(0, world.NextPeaceOffer(mine, other) - world.Now) / (60 * world.Settings.Speed));
 
         static string TribeSignature(World world, Tribe tribe)
         {
@@ -268,9 +281,22 @@ namespace MedievalWorldConquest
             if (kind != RelationKind.Enemy)
                 row.Add(ButtonWith("Declare war", () => confirm(kind == RelationKind.Neutral ? $"Declare war on {name}?" : $"Break your agreement with {name} and declare war? Others will remember it.",
                     () => game.ProposeRelation(id, RelationKind.Enemy)), "btn", "btn--small", "count-btn"));
-            if (kind != RelationKind.Neutral)
-                row.Add(ButtonWith(kind == RelationKind.Enemy ? "Make peace" : "End it", () => game.ProposeRelation(id, RelationKind.Neutral), "btn", "btn--small", "count-btn"));
+            if (kind == RelationKind.Enemy) row.Add(PeaceButton(world, mine, other, () => game.ProposeRelation(id, RelationKind.Neutral), "count-btn"));
+            else if (kind != RelationKind.Neutral)
+                row.Add(ButtonWith("End it", () => game.ProposeRelation(id, RelationKind.Neutral), "btn", "btn--small", "count-btn"));
             return row;
+        }
+
+        /// <summary>Offers peace to a tribe at war with the player's (grayed out for a day after it's turned down).</summary>
+        public static Button PeaceButton(World world, Tribe mine, Tribe other, Action offer, string extraClass = null)
+        {
+            double wait = world.NextPeaceOffer(mine, other) - world.Now;
+            var button = ButtonWith(wait > 0 ? $"Peace refused ({Real(world, wait)})" : "Offer peace", offer, "btn", "btn--small");
+            if (extraClass != null) button.AddToClassList(extraClass);
+            button.SetEnabled(wait <= 0);
+            button.tooltip = wait > 0 ? "They turned down your last offer. You can offer again once the wait is over."
+                : "Their leader weighs it: how the war is going, whether you compete for the same land, other enemies, and your word.";
+            return button;
         }
 
         /// <summary>"[IW] The Iron Wolves  ·  12 members · 34,000 pts · 18 fields", the tag a link to the tribe.</summary>

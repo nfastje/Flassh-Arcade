@@ -110,11 +110,11 @@ namespace MedievalWorldConquest.Simulation
         /// Enough raiders (in the personality's order) to carry off <paramref name="haul"/> and beat the expected
         /// defenders and wall even with the worst luck, or null if the troops available can't do it.
         /// </summary>
-        static int[] RaidParty(AiStyle style, int[] available, double haul, int[] defenders, int wall)
+        static int[] RaidParty(UnitType[] raiders, int[] available, double haul, int[] defenders, int wall)
         {
             var party = new int[Units.Count];
             int wanted = (int)Math.Min(haul, 20000), carry = 0;
-            foreach (var type in style.RaidWith)
+            foreach (var type in raiders)
             {
                 int each = Units.Get(type).Carry;
                 int take = Math.Min(available[(int)type], (int)Math.Ceiling(Math.Max(0, wanted - carry) / (double)each));
@@ -124,7 +124,7 @@ namespace MedievalWorldConquest.Simulation
             if (carry < Math.Min(AiMinHaul, wanted)) return null;
             if (Battle.Fight(party, defenders, wall, -Battle.MaxLuck).AttackerWon) return party;
             // Too few to win: all the raiders on hand, if that does it (they'll just come back with room to spare).
-            foreach (var type in style.RaidWith) party[(int)type] = available[(int)type];
+            foreach (var type in raiders) party[(int)type] = available[(int)type];
             return Battle.Fight(party, defenders, wall, -Battle.MaxLuck).AttackerWon ? party : null;
         }
     }

@@ -70,17 +70,16 @@ namespace MedievalWorldConquest.Simulation
             int scoutsA = Count(attackers, UnitType.Scout), scoutsD = Count(defenders, UnitType.Scout);
             if (scoutsA > 0)
             {
+                // As in Tribal Wars, defending scouts never die to attacking ones: they only cut the attackers down.
+                // Outnumbering them gets some through, losing (defenders / attackers)^1.5 of the attackers (double
+                // their number: a third lost; five times: under a tenth). Otherwise none come back.
+                result.DefenderScoutLossFraction = 0;
                 if (scoutsA > scoutsD)
                 {
                     result.Scouted = true;
                     result.AttackerScoutLossFraction = Math.Pow((double)scoutsD / scoutsA, LossExponent);
-                    result.DefenderScoutLossFraction = scoutsD > 0 ? 1 : 0;
                 }
-                else
-                {
-                    result.AttackerScoutLossFraction = 1;
-                    result.DefenderScoutLossFraction = Math.Pow((double)scoutsA / scoutsD, LossExponent);
-                }
+                else result.AttackerScoutLossFraction = 1;
             }
 
             // Rams batter the wall before the fight.

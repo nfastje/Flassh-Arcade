@@ -26,8 +26,13 @@ namespace MedievalWorldConquest.Simulation
         public int ColorIndex;
         /// <summary>How many times the lord has taken its turn (drives its repeatable random choices).</summary>
         public int ThinkCount;
-        /// <summary>Resources spent so far on buildings and on troops, to keep the lord's spending in balance.</summary>
-        public long SpentOnBuildings, SpentOnTroops;
+        /// <summary>
+        /// Resources spent on buildings and on troops, to keep the lord's spending in balance (lately, if
+        /// <see cref="World.LordSpendingMemoryDays"/> is set: then they fade, as of <see cref="SpentAt"/>).
+        /// </summary>
+        public double SpentOnBuildings, SpentOnTroops, SpentAt;
+        /// <summary>Resources spent on gold coins and noblemen (counted apart from the army unless <see cref="World.ExpansionIsArmySpending"/>).</summary>
+        public double SpentOnExpansion;
         /// <summary>When the lord was last attacked by another player, and by whom (-1: never).</summary>
         public double LastAttackedAt = -1;
         public int LastAttackerId = -1;
@@ -112,7 +117,7 @@ namespace MedievalWorldConquest.Simulation
         /// 20 added the factions' endgame (villages handed over), noble trains and world statistics;
         /// 21 added quests, tips, time played, the Account Manager and the Loot Assistant.
         /// </summary>
-        public const int CurrentVersion = 21;
+        public const int CurrentVersion = 22;
 
         /// <summary>The longest name a village can be given.</summary>
         public const int MaxVillageNameLength = 32;
@@ -220,6 +225,7 @@ namespace MedievalWorldConquest.Simulation
             }
             if (Commands == null) Commands = new List<Command>();
             if (Reports == null) Reports = new List<BattleReport>();
+            if (ArchivedReports == null) ArchivedReports = new List<BattleReport>();
             if (Offers == null) Offers = new List<MarketOffer>();
             // Troops on the march or stationed elsewhere need room for new units too (v13: the mounted archer).
             foreach (var c in Commands) c.Troops = Resized(c.Troops, Units.Count);
@@ -292,6 +298,13 @@ namespace MedievalWorldConquest.Simulation
             if (ManagedVillages == null) ManagedVillages = new List<ManagedVillage>();
             if (CustomTemplates == null) CustomTemplates = new List<BuildTemplate>();
             foreach (var m in ManagedVillages) m.TroopTargets = Resized(m.TroopTargets, Units.Count);
+            // Version 22: the Account Manager splits spending between buildings and troops.
+            if (savedVersion < 22)
+                foreach (var m in ManagedVillages)
+                {
+                    m.TroopShare = DefaultTroopShare;
+                    m.SpentAt = Now;
+                }
             bool managing = false;
             foreach (var e in Events.Pending) managing |= e.Kind == EventKind.ManagerTick;
             if (!managing) ScheduleManagerTick();
@@ -403,6 +416,51 @@ namespace MedievalWorldConquest.Simulation
         {
             var human = HumanPlayer;
             return human == null ? new List<Village>() : new List<Village>(VillagesOf(human.Id));
+        }
+
+        /// <summary>
+        /// All the human player's villages in order of name, as the overview, the Account Manager and the village
+        /// arrows list them (numbers inside names in number order: "Village 2" before "Village 10"; oldest first
+        /// among equals).
+        /// </summary>
+        public List<Village> HumanVillagesByName()
+        {
+            var list = HumanVillages();
+            var age = new Dictionary<Village, int>();
+            for (int i = 0; i < list.Count; i++) age[list[i]] = i;
+            list.Sort((a, b) =>
+            {
+                int byName = CompareNames(a.Name, b.Name);
+                return byName != 0 ? byName : age[a].CompareTo(age[b]);
+            });
+            return list;
+        }
+
+        /// <summary>Compares names as people read them: letters ignoring case, and runs of digits by their value.</summary>
+        public static int CompareNames(string a, string b)
+        {
+            a ??= "";
+            b ??= "";
+            int i = 0, j = 0;
+            while (i < a.Length && j < b.Length)
+            {
+                if (char.IsDigit(a[i]) && char.IsDigit(b[j]))
+                {
+                    int si = i, sj = j;
+                    while (i < a.Length && char.IsDigit(a[i])) i++;
+                    while (j < b.Length && char.IsDigit(b[j])) j++;
+                    string na = a.Substring(si, i - si).TrimStart('0'), nb = b.Substring(sj, j - sj).TrimStart('0');
+                    if (na.Length != nb.Length) return na.Length.CompareTo(nb.Length);
+                    int digits = string.CompareOrdinal(na, nb);
+                    if (digits != 0) return digits;
+                    continue;
+                }
+                int c = char.ToUpperInvariant(a[i]).CompareTo(char.ToUpperInvariant(b[j]));
+                if (c != 0) return c;
+                i++;
+                j++;
+            }
+            return (a.Length - i).CompareTo(b.Length - j);
         }
 
         /// <summary>Makes one of the player's villages the current one. Returns whether it's theirs.</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using MedievalWorldConquest.Simulation;
 using NUnit.Framework;
@@ -51,21 +52,53 @@ namespace MedievalWorldConquest.Tests
 
             // Two days away, as when a real-time world catches up: raid after raid, one at a time.
             int raids = 0;
+            var latest = new HashSet<int>();
+            int clean = 0;
             world.EventApplied += e =>
             {
                 if (e.Kind != EventKind.CommandArrives) return;
                 Assert.LessOrEqual(world.CommandsOf(world.HumanPlayer.Id).Count, 1, "one raid on the go at a time");
+                var t = world.LootTargetFor(target.Id);
+                if (t == null || !World.HasReport(t) || !latest.Add(t.LatestReport.Id)) return;
+                raids++;
+                if (t.LastResult == RaidResult.Clean) clean++;
             };
             world.AdvanceByRealSeconds(2 * World.SecondsPerDay);
-            raids = world.Reports.Count(r => r.Kind == ReportKind.Attack && r.DefenderVillageId == target.Id);
             Assert.GreaterOrEqual(raids, 5);
             Assert.IsTrue(world.LootTargetFor(target.Id).Cycling);
             // (The village rebuilds its wall as it grows, which can cost a spearman: a small loss doesn't stop the cycle.)
             Assert.AreNotEqual(RaidResult.Defeat, world.LootTargetFor(target.Id).LastResult);
             var attacks = world.Reports.Where(r => r.Kind == ReportKind.Attack).ToList();
-            Assert.IsTrue(attacks.Where(r => r.AttackerLost.Sum() == 0).All(r => r.Read && r.Routine), "clean raids are filed as read");
-            Assert.IsTrue(attacks.Where(r => r.AttackerLost.Sum() > 0).All(r => !r.Routine), "raids with losses are not");
+            Assert.IsTrue(attacks.All(r => r.AttackerLost.Sum() > 0 && !r.Routine), "only raids with losses reach the report list");
+            Assert.AreEqual(raids - clean, attacks.Count(r => r.DefenderVillageId == target.Id), "clean raids stay out of it");
+            var last = world.LootTargetFor(target.Id).LatestReport;
+            Assert.AreEqual(target.Id, last.DefenderVillageId, "the latest raid is kept with the village");
+            Assert.AreSame(last, world.FindReport(last.Id), "and can be opened");
+            Assert.IsEmpty(world.ArchivedReports, "nothing is archived");
             Assert.Greater(world.StatOf(world.HumanPlayer, StatKind.Loot, StatPeriod.AllTime), 0);
+        }
+
+        [Test]
+        public void ACyclesCleanRaidsAreKeptOnlyAsTheLatestReport()
+        {
+            var world = NewWorld();
+            var home = world.PlayerVillage;
+            home.Troops[(int)UnitType.LightCavalry] = 40;
+            var template = new int[Units.Count];
+            template[(int)UnitType.LightCavalry] = 20; // far too strong for the villagers to hurt
+            world.SetLootTemplate(World.TemplateB, template);
+            var target = EmptyBarbarian(world);
+            Assert.IsNull(world.StartCycle(home, target, World.TemplateB));
+            int before = world.Reports.Count;
+            world.AdvanceByRealSeconds(World.SecondsPerDay);
+
+            var t = world.LootTargetFor(target.Id);
+            Assert.AreEqual(RaidResult.Clean, t.LastResult);
+            Assert.IsTrue(World.HasReport(t));
+            Assert.IsTrue(t.LatestReport.Routine && t.LatestReport.Read);
+            Assert.AreEqual(before, world.Reports.Count, "no routine raid in the report list");
+            Assert.AreSame(t.LatestReport, world.FindReport(t.LatestReport.Id));
+            Assert.AreEqual(t.LatestReport.Id, world.ReportsAbout(target.Id)[0].Id, "the village's window lists it");
         }
 
         [Test]
