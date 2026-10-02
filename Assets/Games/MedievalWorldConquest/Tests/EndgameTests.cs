@@ -145,5 +145,30 @@ namespace MedievalWorldConquest.Tests
             Assert.AreEqual(10, world.StatOf(human, StatKind.DefeatedAttacking, StatPeriod.AllTime));
             Assert.AreEqual(loot, world.WorldStatOf(StatKind.Loot, StatPeriod.ThisWeek));
         }
+
+        [Test]
+        public void TheRealmKeepsItsRecords()
+        {
+            var world = World.CreateNew(new WorldSettings { Seed = 6, Speed = 1f, RivalDensity = 0, ProtectionDays = 0 });
+            var home = world.PlayerVillage;
+            home.Levels[(int)BuildingType.Farm] = 28;
+            home.Troops[(int)UnitType.Axeman] = 200;
+            if (!world.Villages.Any(v => v.IsBarbarian)) world.QuitLord(world.Players.First(p => p.Personality == AiPersonality.Noob));
+            var target = world.Villages.Where(v => v.IsBarbarian).OrderBy(v => World.Distance(home, v)).First();
+            System.Array.Clear(target.Troops, 0, target.Troops.Length);
+            target.Troops[(int)UnitType.Spearman] = 10;
+            target.Wood = target.Clay = target.Iron = 500;
+            Assert.AreEqual(0, world.Records.BiggestHaul.Day, "none yet");
+
+            var attack = world.Send(home, target, Army((UnitType.Axeman, 200)), CommandKind.Attack);
+            world.AdvanceTo(attack.ArriveTime);
+            var report = world.Reports.Last();
+            var haul = world.Records.BiggestHaul;
+            Assert.AreEqual(report.Loot.Wood + report.Loot.Clay + report.Loot.Iron, haul.Value);
+            Assert.AreEqual(world.HumanPlayer.Name, haul.Who);
+            Assert.AreEqual("Barbarians", haul.Against);
+            StringAssert.Contains(target.Name, haul.Where);
+            Assert.AreEqual(report.AttackerLost.Sum() + report.DefenderLost.Sum(), world.Records.BloodiestBattle.Value);
+        }
     }
 }

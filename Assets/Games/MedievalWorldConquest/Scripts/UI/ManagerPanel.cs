@@ -8,12 +8,13 @@ namespace MedievalWorldConquest
 {
     /// <summary>
     /// The Account Manager, as in Tribal Wars: every village with its build template (what's next, or why it's
-    /// waiting) and its troop targets; and the build templates themselves, the game's own (to follow or copy) and the
-    /// player's (to edit step by step). The world carries it all out, even while the game is closed.
+    /// waiting), its troop template and troop targets; the build templates themselves, the game's own (to follow or
+    /// copy) and the player's (to edit step by step); and the troop templates, likewise (the player's kept across
+    /// all their worlds). The world carries it all out, even while the game is closed.
     /// </summary>
     public class ManagerPanel
     {
-        const string NoTemplate = "None";
+        const string NoTemplate = "None", CustomTroops = "Custom";
 
         public VisualElement Root { get; }
 
@@ -21,7 +22,15 @@ namespace MedievalWorldConquest
         readonly UiLinks links;
         readonly Action<string, Action> confirm;
         readonly VisualElement villageRows, templateRows, troopEditor, templateEditor, villagesSection, templatesSection;
-        readonly Button villagesTab, templatesTab;
+        readonly Button villagesTab, templatesTab, troopTemplatesTab;
+        // The troop templates tab: the list, making one, and one being viewed or edited.
+        readonly VisualElement troopTemplatesSection, troopTemplateRows, troopTemplateEditor, troopTemplateGrid;
+        readonly Label troopTemplateTitle, troopTemplateMessage, troopTemplatePopulation;
+        readonly TextField newTroopTemplateName;
+        readonly DropdownField troopTemplateCopyFrom;
+        readonly IntegerField[] troopTemplateFields = new IntegerField[Units.Count];
+        TroopTemplate editingTroops;
+        string troopTemplatesSignature;
         readonly ScrollView scroll;
         readonly Label troopTitle, templateTitle, createMessage, troopPopulation;
         readonly IntegerField[] troopFields = new IntegerField[Units.Count];
@@ -52,17 +61,21 @@ namespace MedievalWorldConquest
                             "as resources allow (a farm or warehouse that's too small comes first), then troops with what's left, researching them at the smithy " +
                             "when needed. It keeps working while the game is closed.", "row-info"));
 
-            // Two tabs, so the templates don't get lost below a long list of villages.
+            // Tabs, so the templates don't get lost below a long list of villages.
             var tabs = Element("option-row", "manager-tabs");
-            villagesTab = ButtonWith("Villages", () => ShowTab(false), "option");
-            templatesTab = ButtonWith("Build templates", () => ShowTab(true), "option");
+            villagesTab = ButtonWith("Villages", () => ShowTab(0), "option");
+            templatesTab = ButtonWith("Build Templates", () => ShowTab(1), "option");
+            troopTemplatesTab = ButtonWith("Troop Templates", () => ShowTab(2), "option");
             tabs.Add(villagesTab);
             tabs.Add(templatesTab);
+            tabs.Add(troopTemplatesTab);
             scroll.Add(tabs);
             villagesSection = Element();
             templatesSection = Element();
+            troopTemplatesSection = Element();
             scroll.Add(villagesSection);
             scroll.Add(templatesSection);
+            scroll.Add(troopTemplatesSection);
 
             // The troop targets of one village: a little window over the list, by the village's Troops button (so
             // nothing below moves), closed with Save, Cancel or its ✕.
@@ -102,12 +115,8 @@ namespace MedievalWorldConquest
             }
             troopEditor.Add(shareRow);
             troopEditor.Add(Text("The rest goes on the build template. With the template finished, troops get everything.", "row-level", "manager-popup-hint"));
+            troopEditor.Add(Text("Changing the numbers here makes them the village's own (it stops following its troop template).", "row-level", "manager-popup-hint"));
             var troopActions = Element("option-row", "manager-actions");
-            foreach (var (name, troops) in World.TroopPresets)
-            {
-                var preset = troops;
-                troopActions.Add(ButtonWith(name, () => FillTroops(preset), "btn", "btn--small"));
-            }
             troopActions.Add(ButtonWith("Clear", () => FillTroops(new int[Units.Count]), "btn", "btn--small"));
             troopActions.Add(ButtonWith("Save", SaveTroops, "btn", "btn--small"));
             troopActions.Add(ButtonWith("Cancel", () => Show(troopEditor, false), "btn", "btn--small"));
@@ -142,17 +151,66 @@ namespace MedievalWorldConquest
             stepList = Element();
             templateEditor.Add(stepList);
             templatesSection.Add(templateEditor);
-            ShowTab(false);
+
+            // The troop templates: the game's two to view or copy, and the player's own (kept across all their worlds).
+            troopTemplatesSection.Add(Text("Troop targets to give villages: a village following a template takes its numbers, and changes to " +
+                                           "the template reach every village following it. Your own templates are kept for all your worlds.", "row-info"));
+            troopTemplateRows = Element();
+            troopTemplatesSection.Add(troopTemplateRows);
+            var createTroops = Element("send-to-row", "manager-create");
+            createTroops.Add(Text("New template", "row-title"));
+            newTroopTemplateName = new TextField { maxLength = 24 };
+            newTroopTemplateName.AddToClassList("rename-field");
+            createTroops.Add(newTroopTemplateName);
+            createTroops.Add(Text("copied from", "row-level"));
+            troopTemplateCopyFrom = new DropdownField(new List<string> { "(empty)" }, 0);
+            troopTemplateCopyFrom.AddToClassList("manager-dropdown");
+            createTroops.Add(troopTemplateCopyFrom);
+            createTroops.Add(ButtonWith("Create", CreateTroopTemplate, "btn", "btn--small"));
+            troopTemplatesSection.Add(createTroops);
+            troopTemplateMessage = Text("", "row-reason");
+            troopTemplatesSection.Add(troopTemplateMessage);
+
+            troopTemplateEditor = Element("pane-box", "manager-editor");
+            troopTemplateTitle = Text("", "pane-title");
+            troopTemplateEditor.Add(troopTemplateTitle);
+            troopTemplateGrid = Element("manager-troop-grid", "manager-template-grid");
+            foreach (var type in Units.InDisplayOrder)
+            {
+                var cell = Element("manager-troop-cell");
+                cell.tooltip = Units.Get(type).Name;
+                cell.Add(Icons.Element(Icons.Unit(type), 20, "cost-icon"));
+                var field = new IntegerField { value = 0 };
+                field.AddToClassList("amount-field");
+                int index = (int)type;
+                field.RegisterValueChangedCallback(e => TroopTemplateFieldChanged(index, e.newValue));
+                troopTemplateFields[index] = field;
+                cell.Add(field);
+                troopTemplateGrid.Add(cell);
+            }
+            troopTemplateEditor.Add(troopTemplateGrid);
+            troopTemplatePopulation = Text("", "row-level", "manager-popup-hint");
+            troopTemplateEditor.Add(troopTemplatePopulation);
+            var troopTemplateActions = Element("option-row", "manager-actions");
+            troopTemplateActions.Add(ButtonWith("Close", () => Show(troopTemplateEditor, false), "btn", "btn--small"));
+            troopTemplateEditor.Add(troopTemplateActions);
+            troopTemplatesSection.Add(troopTemplateEditor);
+
+            ShowTab(0);
             Show(templateEditor, false);
+            Show(troopTemplateEditor, false);
         }
 
-        void ShowTab(bool templates)
+        /// <summary>0: the villages; 1: the build templates; 2: the troop templates.</summary>
+        void ShowTab(int tab)
         {
             Show(troopEditor, false);
-            Show(villagesSection, !templates);
-            Show(templatesSection, templates);
-            villagesTab.EnableInClassList("option--selected", !templates);
-            templatesTab.EnableInClassList("option--selected", templates);
+            Show(villagesSection, tab == 0);
+            Show(templatesSection, tab == 1);
+            Show(troopTemplatesSection, tab == 2);
+            villagesTab.EnableInClassList("option--selected", tab == 0);
+            templatesTab.EnableInClassList("option--selected", tab == 1);
+            troopTemplatesTab.EnableInClassList("option--selected", tab == 2);
             scroll.scrollOffset = UnityEngine.Vector2.zero;
         }
 
@@ -165,13 +223,21 @@ namespace MedievalWorldConquest
             if (human == null) return;
             var villages = world.HumanVillagesByName();
             var templates = world.AllTemplates();
+            var troopTemplates = world.AllTroopTemplates();
 
             string templatesNow = string.Join("|", templates.ConvertAll(t => t.Name + ":" + t.Steps.Count));
-            string villagesNow = string.Join(",", villages.ConvertAll(v => v.Id + ":" + v.Name)) + "#" + templatesNow;
+            string troopTemplatesNow = string.Join("|", troopTemplates.ConvertAll(t => t.Name + ":" + string.Join(",", t.Troops)));
+            string villagesNow = string.Join(",", villages.ConvertAll(v => v.Id + ":" + v.Name + ":" + world.ManagementOf(v.Id)?.TroopTemplate))
+                                 + "#" + templatesNow + "#" + string.Join("|", troopTemplates.ConvertAll(t => t.Name));
             if (villagesNow != villagesSignature)
             {
                 villagesSignature = villagesNow;
-                BuildVillageRows(world, villages, templates);
+                BuildVillageRows(world, villages, templates, troopTemplates);
+            }
+            if (troopTemplatesNow != troopTemplatesSignature)
+            {
+                troopTemplatesSignature = troopTemplatesNow;
+                BuildTroopTemplateRows(troopTemplates);
             }
             if (templatesNow != templatesSignature)
             {
@@ -185,12 +251,14 @@ namespace MedievalWorldConquest
             }
         }
 
-        void BuildVillageRows(World world, List<Village> villages, List<BuildTemplate> templates)
+        void BuildVillageRows(World world, List<Village> villages, List<BuildTemplate> templates, List<TroopTemplate> troopTemplates)
         {
             villageRows.Clear();
             shown.Clear();
             var choices = new List<string> { NoTemplate };
             choices.AddRange(templates.ConvertAll(t => t.Name));
+            var troopChoices = new List<string> { CustomTroops };
+            troopChoices.AddRange(troopTemplates.ConvertAll(t => t.Name));
             foreach (var v in villages)
             {
                 int id = v.Id;
@@ -202,7 +270,14 @@ namespace MedievalWorldConquest
                 var pick = new DropdownField(choices, Math.Max(0, choices.IndexOf(string.IsNullOrEmpty(m?.Template) ? NoTemplate : m.Template)));
                 pick.AddToClassList("manager-dropdown");
                 pick.RegisterValueChangedCallback(e => game.SetVillageTemplate(id, e.newValue == NoTemplate ? "" : e.newValue));
+                pick.tooltip = "Build template";
                 row.Add(pick);
+                // The troop template it follows ("Custom": its own numbers, set with the Troops button).
+                var troopPick = new DropdownField(troopChoices, Math.Max(0, troopChoices.IndexOf(string.IsNullOrEmpty(m?.TroopTemplate) ? CustomTroops : m.TroopTemplate)));
+                troopPick.AddToClassList("manager-dropdown");
+                troopPick.tooltip = "Troop template";
+                troopPick.RegisterValueChangedCallback(e => game.SetVillageTroopTemplate(id, e.newValue == CustomTroops ? "" : e.newValue));
+                row.Add(troopPick);
                 var details = Element("manager-details");
                 var status = Text("", "row-level");
                 details.Add(status);
@@ -256,6 +331,101 @@ namespace MedievalWorldConquest
                 field.Focus();
                 field.SelectAll();
             });
+        }
+
+        // ---------------------------------------------------------------- troop templates
+
+        void BuildTroopTemplateRows(List<TroopTemplate> templates)
+        {
+            troopTemplateRows.Clear();
+            var names = new List<string> { "(empty)" };
+            foreach (var t in templates)
+            {
+                names.Add(t.Name);
+                var row = Element("manager-row");
+                row.Add(Text(t.Name, "row-title", "manager-name"));
+                var details = Element("manager-details");
+                var icons = Element("manager-troops");
+                details.Add(icons);
+                ShowTroops(icons, t.Troops, t.BuiltIn ? "the game's own" : null);
+                row.Add(details);
+                var template = t;
+                row.Add(ButtonWith(t.BuiltIn ? "View" : "Edit", () => OpenTroopTemplate(template), "btn", "btn--small", "count-btn"));
+                if (!t.BuiltIn)
+                    row.Add(ButtonWith("Delete", () => confirm($"Delete the troop template \"{template.Name}\"? Villages that follow it keep its numbers as their own.", () =>
+                    {
+                        game.DeleteTroopTemplate(template.Name);
+                        if (editingTroops == template) Show(troopTemplateEditor, false);
+                    }), "btn", "btn--small", "count-btn"));
+                troopTemplateRows.Add(row);
+            }
+            troopTemplateCopyFrom.choices = names;
+            if (troopTemplateCopyFrom.index < 0 || troopTemplateCopyFrom.index >= names.Count) troopTemplateCopyFrom.index = 0;
+        }
+
+        /// <summary>Unit icons with counts, for a set of troops (and a note after them, if any).</summary>
+        static void ShowTroops(VisualElement into, int[] troops, string note)
+        {
+            into.Clear();
+            bool any = false;
+            foreach (var type in Units.InDisplayOrder)
+            {
+                int n = (int)type < troops.Length ? troops[(int)type] : 0;
+                if (n <= 0) continue;
+                any = true;
+                var cell = Element("manager-troop-target");
+                cell.tooltip = $"{Units.Get(type).Name}: {n:N0}";
+                cell.Add(Icons.Element(Icons.Unit(type), 16, "manager-troop-icon"));
+                cell.Add(Text($"{n:N0}", "row-level", "manager-troop-count"));
+                into.Add(cell);
+            }
+            if (!any) into.Add(Text("No troops yet.", "row-level"));
+            if (note != null) into.Add(Text($"·  {note}", "row-level"));
+        }
+
+        void CreateTroopTemplate()
+        {
+            string from = troopTemplateCopyFrom.index > 0 ? troopTemplateCopyFrom.value : null;
+            string problem = game.CreateTroopTemplate(newTroopTemplateName.value, from);
+            SetText(troopTemplateMessage, problem ?? $"Troop template \"{newTroopTemplateName.value.Trim()}\" made: set its numbers below, then choose it for a village.");
+            if (problem != null) return;
+            var made = lastWorld?.FindTroopTemplate(newTroopTemplateName.value.Trim());
+            newTroopTemplateName.SetValueWithoutNotify("");
+            troopTemplatesSignature = null;
+            if (made != null) OpenTroopTemplate(made);
+        }
+
+        /// <summary>Shows a troop template's numbers: to edit for the player's own, to look at for the game's.</summary>
+        void OpenTroopTemplate(TroopTemplate t)
+        {
+            editingTroops = t;
+            SetText(troopTemplateTitle, t.BuiltIn ? $"{t.Name} (the game's own: copy it to change it)" : $"Editing {t.Name}");
+            for (int i = 0; i < Units.Count; i++)
+            {
+                troopTemplateFields[i]?.SetValueWithoutNotify(i < t.Troops.Length ? t.Troops[i] : 0);
+                troopTemplateFields[i]?.SetEnabled(!t.BuiltIn);
+            }
+            ShowTroopTemplatePopulation();
+            Show(troopTemplateEditor, true);
+        }
+
+        void TroopTemplateFieldChanged(int unit, int value)
+        {
+            var t = editingTroops;
+            if (t == null || t.BuiltIn) return;
+            t.Troops[unit] = Math.Max(0, value);
+            ShowTroopTemplatePopulation();
+            game.TroopTemplateEdited();
+            nextRefresh = 0;
+        }
+
+        void ShowTroopTemplatePopulation()
+        {
+            var t = editingTroops;
+            if (t == null) return;
+            long need = 0;
+            for (int i = 0; i < Units.Count && i < t.Troops.Length; i++) need += (long)t.Troops[i] * Units.Get((UnitType)i).Cost.Population;
+            SetText(troopTemplatePopulation, $"These troops need {need:N0} population (a level 30 farm holds {Buildings.FarmCapacity(Buildings.Get(BuildingType.Farm).MaxLevel):N0}, less what the buildings use).");
         }
 
         /// <summary>

@@ -346,6 +346,58 @@ namespace MedievalWorldConquest
 
         public void DeleteTemplate(string name) => world?.DeleteTemplate(name);
 
+        // Troop templates: the player's own are kept in their profile, shared by every world.
+
+        /// <summary>Hands the profile's troop templates to the world, and brings the villages that follow them up to date.</summary>
+        void LoadTroopTemplates()
+        {
+            var templates = ProfileFile.Load().TroopTemplates ?? new System.Collections.Generic.List<TroopTemplate>();
+            foreach (var t in templates)
+            {
+                var troops = new int[Units.Count];
+                for (int i = 0; i < troops.Length && t.Troops != null && i < t.Troops.Length; i++) troops[i] = t.Troops[i];
+                t.Troops = troops;
+            }
+            world.CustomTroopTemplates = templates;
+            world.SyncTroopTemplates();
+        }
+
+        /// <summary>Writes the player's troop templates back to their profile (the rest of the record as it was).</summary>
+        void SaveTroopTemplates()
+        {
+            if (world == null) return;
+            var record = ProfileFile.Load();
+            record.TroopTemplates = world.CustomTroopTemplates;
+            ProfileFile.Save(record);
+        }
+
+        public void SetVillageTroopTemplate(int villageId, string name) => world?.SetVillageTroopTemplate(world.FindVillage(villageId), name);
+
+        /// <summary>A new troop template of the player's; returns why not, or null.</summary>
+        public string CreateTroopTemplate(string name, string copyFrom)
+        {
+            string problem = world?.CreateTroopTemplate(name, copyFrom);
+            if (world != null && problem == null) SaveTroopTemplates();
+            return problem;
+        }
+
+        public void DeleteTroopTemplate(string name)
+        {
+            if (world == null || !world.DeleteTroopTemplate(name)) return;
+            SaveTroopTemplates();
+        }
+
+        /// <summary>A troop template was changed: the villages that follow it take its new numbers, and it's saved.</summary>
+        public void TroopTemplateEdited()
+        {
+            if (world == null) return;
+            world.SyncTroopTemplates();
+            if (world.HumanPlayer != null)
+                foreach (var v in new System.Collections.Generic.List<Village>(world.VillagesOf(world.HumanPlayer.Id)))
+                    if (!string.IsNullOrEmpty(world.ManagementOf(v.Id)?.TroopTemplate)) world.Manage(v);
+            SaveTroopTemplates();
+        }
+
         /// <summary>A template was changed: the villages that follow it act on it now.</summary>
         public void TemplateEdited(string name)
         {

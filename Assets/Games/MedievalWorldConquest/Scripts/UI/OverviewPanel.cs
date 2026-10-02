@@ -10,14 +10,17 @@ namespace MedievalWorldConquest
     /// The villages overview, like Tribal Wars' overviews: every village the player holds on one screen, in one of
     /// two modes with fixed columns that line up from village to village. Production: stores, storage, farm and
     /// what's being built. Troops: a column for each kind of unit, with how many are at home. Both show points and
-    /// any attacks on their way. A village's name switches to it.
+    /// any attacks on their way. A village's name switches to it; the pencil beside it renames it.
     /// </summary>
     public class OverviewPanel
     {
         public VisualElement Root { get; }
 
         readonly Action<int> switchTo;
+        readonly Action<int, string> rename;
         readonly ScrollView list;
+        /// <summary>The villages' lines, inside the list.</summary>
+        readonly VisualElement rowsBox;
         readonly Label summaryVillages;
         readonly VisualElement summaryStores, summaryTroops;
         readonly Label[] summaryStock = new Label[3];
@@ -33,8 +36,10 @@ namespace MedievalWorldConquest
         /// <summary>One village's line: its cells, updated in place.</summary>
         class Row
         {
-            public VisualElement Root, Production, Troops;
-            public Button Name;
+            public VisualElement Root, Production, Troops, NameLine;
+            public Button Name, Pencil;
+            /// <summary>The box the new name is typed in, while renaming (null otherwise).</summary>
+            public VisualElement Renaming;
             public Label Where, Points, Wood, Clay, Iron, Storage, Farm, Building, BuildingTime, Incoming;
             /// <summary>The units in training, as icons with counts (rebuilt when that changes).</summary>
             public VisualElement Recruiting;
@@ -44,9 +49,11 @@ namespace MedievalWorldConquest
         }
 
         /// <param name="switchTo">Makes a village the current one and shows it.</param>
-        public OverviewPanel(Action<int> switchTo)
+        /// <param name="rename">Renames a village.</param>
+        public OverviewPanel(Action<int> switchTo, Action<int, string> rename)
         {
             this.switchTo = switchTo;
+            this.rename = rename;
             Root = Element("army", "overview");
             var column = Element("overview-column");
             column.Add(Text("Villages", "heading"));
@@ -86,7 +93,6 @@ namespace MedievalWorldConquest
                 summaryTroops.Add(chip);
             }
             summary.Add(summaryTroops);
-            summary.Add(Text("Click a village's name to go there.", "row-info", "overview-summary-text"));
             column.Add(summary);
 
             // The column headings take the same cell style as the rows below, so every column lines up.
@@ -101,8 +107,13 @@ namespace MedievalWorldConquest
                 cell.Add(Icons.Element(icon, 18));
                 productionHeader.Add(cell);
             }
-            productionHeader.Add(Text("Construction", "overview-cell", "overview-building"));
-            productionHeader.Add(Text("Recruiting", "overview-cell", "overview-recruiting"));
+            // (Built like the cells under them, a box with the text inside, so title and contents start at the same place.)
+            var constructionTitle = Element("overview-building");
+            constructionTitle.Add(Text("Construction", "overview-cell"));
+            productionHeader.Add(constructionTitle);
+            var recruitingTitle = Element("overview-recruiting", "overview-recruiting-units");
+            recruitingTitle.Add(Text("Recruiting", "overview-cell"));
+            productionHeader.Add(recruitingTitle);
             header.Add(productionHeader);
             troopsHeader = Element("overview-group");
             foreach (var type in Units.InDisplayOrder)
@@ -114,10 +125,13 @@ namespace MedievalWorldConquest
             }
             header.Add(troopsHeader);
             header.Add(Text("Incoming", "overview-cell", "overview-incoming"));
-            column.Add(header);
 
+            // The heading stays put above the scrolling list of villages.
+            column.Add(header);
             list = new ScrollView(ScrollViewMode.Vertical);
             list.AddToClassList("ranking-list");
+            rowsBox = Element();
+            list.Add(rowsBox);
             column.Add(list);
             Root.Add(column);
             ShowMode(false);
@@ -149,7 +163,7 @@ namespace MedievalWorldConquest
             if (now != signature)
             {
                 signature = now;
-                list.Clear();
+                rowsBox.Clear();
                 rows.Clear();
                 foreach (var v in own) rows.Add(MakeRow(v.Id));
             }
@@ -163,7 +177,9 @@ namespace MedievalWorldConquest
                 var v = own[i];
                 var row = rows[i];
                 SetText(row.Name, v.Name);
-                SetText(row.Where, $"({v.X}|{v.Y}) {World.ContinentName(v.X, v.Y)}");
+                row.Name.tooltip = v.Name;
+                SetText(row.Where, $"({v.X}|{v.Y})");
+                row.Where.tooltip = $"Continent {World.ContinentName(v.X, v.Y)}";
                 SetText(row.Points, $"{v.Points:N0}");
                 if (troopsShown) ShowTroops(row, v);
                 else ShowProduction(world, row, v);
@@ -217,6 +233,9 @@ namespace MedievalWorldConquest
         /// The units in training in a village, by kind, as an icon and how many each (in Tribal Wars' order), so a
         /// busy village never runs over into the next column; the full list is in the tooltip.
         /// </summary>
+        /// <summary>The most kinds of unit the Recruiting column shows (the rest as "+N", all of them in the tooltip).</summary>
+        const int MaxRecruitingShown = 3;
+
         static void ShowRecruiting(Row row, Village v)
         {
             var training = new int[Units.Count];
@@ -231,13 +250,55 @@ namespace MedievalWorldConquest
                 int n = training[(int)type];
                 if (n <= 0) continue;
                 names.Add($"{n:N0} {Units.Get(type).Name}");
+                // One line only (the row has room for no more): the first few kinds, then "+N" for the rest.
+                if (names.Count > MaxRecruitingShown) continue;
                 var cell = Element("overview-recruit-unit");
                 cell.Add(Icons.Element(Icons.Unit(type), 16));
                 cell.Add(Text($"{n:N0}", "overview-cell", "overview-recruit-count"));
                 row.Recruiting.Add(cell);
             }
+            if (names.Count > MaxRecruitingShown) row.Recruiting.Add(Text($"+{names.Count - MaxRecruitingShown}", "overview-cell", "overview-recruit-more"));
             if (names.Count == 0) row.Recruiting.Add(Text("–", "overview-cell"));
             row.Recruiting.tooltip = names.Count == 0 ? "" : "In training: " + string.Join(", ", names);
+        }
+
+        /// <summary>Swaps the name for a box to type the new one in, as in the Manager: Enter or OK renames, ✕ leaves it be.</summary>
+        void StartRename(Row row)
+        {
+            if (row.Renaming != null) return;
+            var field = new TextField { maxLength = World.MaxVillageNameLength, value = row.Name.text };
+            field.AddToClassList("rename-field");
+            field.AddToClassList("manager-rename-field");
+            var box = Element("overview-rename");
+            box.Add(field);
+            void Done(bool apply)
+            {
+                if (row.Renaming == null) return;
+                if (apply) rename(row.VillageId, field.value);
+                row.NameLine.Remove(row.Renaming);
+                row.Renaming = null;
+                Show(row.Name, true);
+                Show(row.Pencil, true);
+                Show(row.Where, true);
+                nextRefresh = 0; // the new name (and its place in the order) at once
+            }
+            field.RegisterCallback<KeyDownEvent>(e =>
+            {
+                if (e.keyCode == UnityEngine.KeyCode.Return || e.keyCode == UnityEngine.KeyCode.KeypadEnter) Done(true);
+                else if (e.keyCode == UnityEngine.KeyCode.Escape) Done(false);
+            }, TrickleDown.TrickleDown);
+            box.Add(ButtonWith("OK", () => Done(true), "btn", "btn--small", "manager-rename-btn"));
+            box.Add(ButtonWith("✕", () => Done(false), "btn", "btn--small", "manager-rename-btn"));
+            Show(row.Name, false);
+            Show(row.Pencil, false);
+            Show(row.Where, false);
+            row.Renaming = box;
+            row.NameLine.Add(box);
+            field.schedule.Execute(() =>
+            {
+                field.Focus();
+                field.SelectAll();
+            });
         }
 
         static void ShowTroops(Row row, Village v)
@@ -256,10 +317,17 @@ namespace MedievalWorldConquest
         {
             // (Every village's line is the same height in both modes, so switching doesn't move the list.)
             var row = new Row { VillageId = villageId, Root = Element("overview-row", "overview-line") };
+            // The name and its pencil, then the coordinates (the continent on hover, leaving the name more room).
             var name = Element("overview-name");
-            row.Name = Link("", () => switchTo(villageId));
-            row.Where = Text("", "row-level");
-            name.Add(row.Name);
+            row.NameLine = Element("overview-name-line");
+            row.Name = Link("", () => switchTo(villageId), "manager-village-link");
+            row.Pencil = new Button(() => StartRename(row)) { tooltip = "Rename" };
+            row.Pencil.AddToClassList("pencil-btn");
+            row.Pencil.Add(Icons.Element(Icons.Pencil, 16));
+            row.NameLine.Add(row.Name);
+            row.NameLine.Add(row.Pencil);
+            row.Where = Text("", "row-level", "manager-coords");
+            name.Add(row.NameLine);
             name.Add(row.Where);
             row.Root.Add(name);
             row.Points = Cell(row.Root, "overview-number");
@@ -289,7 +357,7 @@ namespace MedievalWorldConquest
             row.Incoming = Cell(row.Root, "overview-incoming");
             Show(row.Production, !troopsShown);
             Show(row.Troops, troopsShown);
-            list.Add(row.Root);
+            rowsBox.Add(row.Root);
             return row;
         }
 

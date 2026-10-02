@@ -21,6 +21,7 @@ namespace MedievalWorldConquest
             slot = saveSlot;
             paused = false;
             world = World.CreateNew(settings);
+            LoadTroopTemplates();
             ListenForSounds();
             SaveWorld();
             ShowVillage(settings.Seed);
@@ -44,6 +45,7 @@ namespace MedievalWorldConquest
             slot = saveSlot;
             paused = false;
             world = loaded;
+            LoadTroopTemplates(); // (before catching up: the Account Manager works through the time away too)
             double away = SaveGame.CatchUpRealSeconds(world, savedAt, DateTime.UtcNow);
             double before = world.Now;
             StartCoroutine(CatchUp(away, () =>

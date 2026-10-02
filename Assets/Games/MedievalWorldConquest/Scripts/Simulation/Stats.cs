@@ -34,6 +34,27 @@ namespace MedievalWorldConquest.Simulation
         public long[] Values;
     }
 
+    /// <summary>One of the realm's records: how much, who set it (and against whom), where, and on which day (0: none yet).</summary>
+    [Serializable]
+    public class RealmRecord
+    {
+        public long Value;
+        public string Who = "", Against = "", Where = "";
+        public int Day;
+    }
+
+    /// <summary>The realm's records, for the statistics page.</summary>
+    [Serializable]
+    public class RealmRecords
+    {
+        /// <summary>The most plunder carried off by one attack.</summary>
+        public RealmRecord BiggestHaul = new RealmRecord();
+        /// <summary>The most troops killed in one battle, both sides together.</summary>
+        public RealmRecord BloodiestBattle = new RealmRecord();
+        /// <summary>The most villages one player conquered in a single day.</summary>
+        public RealmRecord MostConquestsInADay = new RealmRecord();
+    }
+
     /// <summary>
     /// World statistics: each player's counts (all time, and where they stood when the day and the week began, so
     /// today's and this week's are the difference), and the world's own for each of the last
@@ -50,6 +71,19 @@ namespace MedievalWorldConquest.Simulation
         public long[] WorldStats = new long[StatKinds];
         public long[] WorldStatsDayStart = new long[StatKinds];
         public List<DayStats> StatHistory = new List<DayStats>();
+        public RealmRecords Records = new RealmRecords();
+
+        /// <summary>Notes a battle for the records: the haul, and the troops killed on both sides.</summary>
+        void NoteBattleRecords(Player attacker, Village target, long haul, long killed)
+        {
+            Records ??= new RealmRecords();
+            string where = $"{target.Name} ({target.X}|{target.Y})";
+            string against = target.IsBarbarian ? "Barbarians" : FindPlayer(target.OwnerId)?.Name ?? "";
+            if (haul > Records.BiggestHaul.Value)
+                Records.BiggestHaul = new RealmRecord { Value = haul, Who = attacker?.Name ?? "", Against = against, Where = where, Day = DayOf(Now) };
+            if (killed > Records.BloodiestBattle.Value)
+                Records.BloodiestBattle = new RealmRecord { Value = killed, Who = attacker?.Name ?? "", Against = against, Where = where, Day = DayOf(Now) };
+        }
 
         static int WeekOf(int day) => (day - 1) / 7;
 
@@ -63,9 +97,14 @@ namespace MedievalWorldConquest.Simulation
             StatHistory.Add(new DayStats { Day = StatsDay, Values = finished });
             if (StatHistory.Count > MaxStatHistory) StatHistory.RemoveRange(0, StatHistory.Count - MaxStatHistory);
             bool newWeek = WeekOf(today) != WeekOf(StatsDay);
+            Records ??= new RealmRecords();
             foreach (var p in Players)
             {
                 EnsureStats(p);
+                // The day's conquests, for the records, before the day's counts start again.
+                long conquered = p.Stats[(int)StatKind.VillagesConquered] - p.StatsDayStart[(int)StatKind.VillagesConquered];
+                if (conquered > Records.MostConquestsInADay.Value)
+                    Records.MostConquestsInADay = new RealmRecord { Value = conquered, Who = p.Name, Day = StatsDay };
                 Array.Copy(p.Stats, p.StatsDayStart, StatKinds);
                 if (newWeek) Array.Copy(p.Stats, p.StatsWeekStart, StatKinds);
             }

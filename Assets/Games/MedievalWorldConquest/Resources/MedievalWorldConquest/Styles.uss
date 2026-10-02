@@ -1042,8 +1042,10 @@
     justify-content: center;
 }
 
+/* One width for every tab (players, tribes, statistics), so the switches under the heading never move. */
 .ranking-column {
-    width: 620px;
+    width: 1180px;
+    max-width: 100%;
 }
 
 /* Only the list gives way when space is short: the heading, summary, switches and pager keep their size. */
@@ -1061,9 +1063,9 @@
     flex-grow: 1;
 }
 
-/* Three lines, always: the rows below never move with its length. */
+/* Two lines, always: the rows below never move with its length. */
 .ranking-summary {
-    height: 66px;
+    height: 44px;
     margin-top: 6px;
     overflow: hidden;
     white-space: normal;
@@ -1116,12 +1118,6 @@
     flex-shrink: 0;
 }
 
-/* The tribes' table has two more columns (members, and the share with allies), so it's wider. */
-.ranking-column--tribes {
-    width: 820px;
-    max-width: 100%;
-}
-
 .ranking-narrow {
     width: 80px;
 }
@@ -1162,11 +1158,6 @@
 }
 
 /* The statistics take the screen's width: resources, troops and villages in three columns side by side. */
-.ranking-column--wide {
-    width: 1180px;
-    max-width: 100%;
-}
-
 .stats-columns {
     flex-direction: row;
     align-items: flex-start;
@@ -1993,7 +1984,7 @@
 
 .overview-column {
     flex-grow: 1;
-    max-width: 1200px;
+    max-width: 1290px;
 }
 
 .overview-row {
@@ -2014,7 +2005,7 @@
 }
 
 .overview-name {
-    width: 210px;
+    width: 260px;
     flex-shrink: 0;
     flex-direction: row;
     align-items: center;
@@ -2835,9 +2826,11 @@
     margin-bottom: 4px;
 }
 
+/* (The totals stay together on their line: a long figure never pushes one onto a row of its own.) */
 .overview-summary-group {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
     align-items: center;
 }
 
@@ -2904,4 +2897,150 @@
 
 .overview-recruit-count {
     margin-left: 2px;
+}
+
+/* A troop template's numbers, in the Troop Templates tab: the same unit grid as a village's troop targets. */
+.manager-template-grid {
+    padding: 6px 8px;
+}
+
+/* The villages overview's column titles, wherever they sit in the heading (some are inside a group of columns). */
+.ranking-header .overview-cell {
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+/* Construction and Recruiting, titles and contents alike, centered in their columns like the other columns. */
+.overview-building {
+    padding-left: 0;
+    align-items: center;
+}
+
+.overview-building > .overview-cell {
+    -unity-text-align: middle-center;
+}
+
+.overview-recruiting {
+    padding-left: 0;
+}
+
+.overview-recruiting-units {
+    justify-content: center;
+}
+
+.overview-recruiting-units > .overview-cell {
+    -unity-text-align: middle-center;
+}
+
+/* Recruiting keeps to one line within its column: nothing reaches the row below or the next column. */
+.overview-recruiting-units {
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+.overview-recruit-more {
+    -unity-font-style: bold;
+}
+
+/* The players' ranking: the tribe in a column of its own. */
+.ranking-tribe {
+    width: 90px;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    overflow: hidden;
+}
+
+/* Statistics: five narrower boards side by side, their names given the room left by the numbers. */
+.stats-column {
+    margin: 0 5px;
+}
+
+.stats-column .ranking-number {
+    width: 64px;
+    font-size: 13px;
+}
+
+.stats-column .ranking-rank {
+    width: 26px;
+    font-size: 13px;
+}
+
+.stats-column .ranking-row {
+    padding: 3px 4px;
+}
+
+/* Statistics boards: a name starts at the left and is cut off at its end, with a little room before the figure. */
+.stats-column .ranking-name {
+    margin-right: 6px;
+}
+
+.stats-column .ranking-link {
+    -unity-text-align: middle-left;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 13px;
+}
+
+.stats-column .ranking-name > .link {
+    flex-shrink: 1;
+}
+
+/* Statistics: short figures leave the names more room. */
+.stats-column .ranking-number {
+    width: 52px;
+}
+
+/* The realm as it stands: a strip of figures over the boards. */
+.stats-strip {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin: 6px 0 2px 0;
+}
+
+.stats-strip-cell {
+    align-items: center;
+    margin-right: 22px;
+}
+
+.stats-strip-value {
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: rgb(92, 52, 20);
+}
+
+/* The realm's records, under the boards: four boxes side by side. */
+.stats-records {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.stats-record {
+    width: 25%;
+    padding: 4px 8px 4px 0;
+}
+
+.stats-record > .row-info {
+    white-space: normal;
+}
+
+/* The villages overview: renaming in place, the box and its buttons filling the name's cell. */
+.overview-rename {
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+/* A village's name and pencil, together taking what the coordinates leave (and the rename box, while renaming). */
+.overview-name-line {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 1;
+    flex-grow: 1;
+    min-width: 0;
 }

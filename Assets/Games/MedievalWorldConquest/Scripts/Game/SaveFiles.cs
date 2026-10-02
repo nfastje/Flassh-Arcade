@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using MedievalWorldConquest.Simulation;
 using UnityEngine;
@@ -63,6 +64,8 @@ namespace MedievalWorldConquest
         public int BestRank, MostVillages;
         public long[] Stats = new long[World.StatKinds];
         public double PlayedSeconds;
+        /// <summary>The player's own troop templates for the Account Manager, shared by all their worlds.</summary>
+        public List<TroopTemplate> TroopTemplates = new List<TroopTemplate>();
         /// <summary>Worlds played in all (only when shown: deleted ones plus those still saved).</summary>
         [NonSerialized] public int WorldsPlayed;
 

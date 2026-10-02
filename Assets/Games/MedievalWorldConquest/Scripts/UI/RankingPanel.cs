@@ -25,7 +25,7 @@ namespace MedievalWorldConquest
         readonly Label summary, pageLabel;
         readonly Button first, previous, next, showPlayers, showTribes, showStats;
         readonly VisualElement pager, header;
-        readonly Label headerName, headerMembers, headerBloc;
+        readonly Label headerName, headerMembers, headerBloc, headerTribe, headerConquered, headerOda, headerOdd;
         readonly StatsPanel stats;
         readonly VisualElement column;
         /// <summary>On diplomacy worlds: the tribes' ranking rather than the players'; or the statistics.</summary>
@@ -41,7 +41,7 @@ namespace MedievalWorldConquest
         class RankRow
         {
             public VisualElement Root, Swatch;
-            public Label Rank, Note, Members, Bloc, Villages, Points;
+            public Label Rank, Note, Members, Bloc, Villages, Points, Conquered, Oda, Odd;
             public Button Name, Tag;
             public int Id = -1, TribeId = -1;
         }
@@ -86,6 +86,8 @@ namespace MedievalWorldConquest
             header.Add(Text("#", "ranking-rank"));
             headerName = Text("Lord", "ranking-name");
             header.Add(headerName);
+            headerTribe = Text("Tribe", "ranking-tribe");
+            header.Add(headerTribe);
             // The tribes' own columns: members, and the share their side holds with its allies.
             headerMembers = Text("Members", "ranking-number", "ranking-narrow");
             header.Add(headerMembers);
@@ -94,6 +96,16 @@ namespace MedievalWorldConquest
             header.Add(headerBloc);
             header.Add(Text("Villages", "ranking-number"));
             header.Add(Text("Points", "ranking-number"));
+            // The players' fighting record (all time), as in Tribal Wars' ranking.
+            headerConquered = Text("Conquered", "ranking-number");
+            headerConquered.tooltip = "Villages conquered, all time";
+            header.Add(headerConquered);
+            headerOda = Text("ODA", "ranking-number");
+            headerOda.tooltip = "Opponents defeated attacking: enemy troops killed by this player's attacks, all time";
+            header.Add(headerOda);
+            headerOdd = Text("ODD", "ranking-number");
+            headerOdd.tooltip = "Opponents defeated defending: attacking troops killed in this player's villages, all time";
+            header.Add(headerOdd);
             column.Add(header);
 
             // The scrollbar is always there, and the header leaves the same room on its right, so every heading
@@ -155,6 +167,8 @@ namespace MedievalWorldConquest
                 SetText(row.Bloc, $"{world.BlocShare(t):P1}");
                 SetText(row.Villages, $"{strength[t.Id].villages:N0}");
                 SetText(row.Points, $"{strength[t.Id].points:N0}");
+                SetText(row.Oda, $"{world.StatOf(t, StatKind.DefeatedAttacking, StatPeriod.AllTime):N0}");
+                SetText(row.Odd, $"{world.StatOf(t, StatKind.DefeatedDefending, StatPeriod.AllTime):N0}");
             }            SetText(summary, tribes.Count == 0 ? "No tribes have formed yet."
                 : $"{tribes.Count:N0} tribes. A tribe and up to two allies holding {world.Settings.ConquestGoal:P0} of the {world.GoalVillagesLabel} for {World.HoldDays:0} days win." +
                   (mine != null ? $" Your side holds {world.BlocShare(mine):P1}." : "") + (world.HoldTribeId != -1 ? " " + HoldStatus(world) : ""));
@@ -205,12 +219,18 @@ namespace MedievalWorldConquest
             name.Add(row.Name);
             if (player)
             {
-                row.Tag = Link("", () => { if (row.TribeId >= 0) links.OpenTribe(row.TribeId); });
-                name.Add(row.Tag);
                 row.Note = Text("(fallen)", "row-reason");
                 name.Add(row.Note);
             }
             row.Root.Add(name);
+            if (player)
+            {
+                // The tribe in its own column.
+                var tribeCell = Element("ranking-tribe");
+                row.Tag = Link("", () => { if (row.TribeId >= 0) links.OpenTribe(row.TribeId); });
+                tribeCell.Add(row.Tag);
+                row.Root.Add(tribeCell);
+            }
             if (!player)
             {
                 row.Members = Text("", "ranking-number", "ranking-narrow");
@@ -222,6 +242,16 @@ namespace MedievalWorldConquest
             row.Root.Add(row.Villages);
             row.Points = Text("", "ranking-number");
             row.Root.Add(row.Points);
+            if (player)
+            {
+                row.Conquered = Text("", "ranking-number");
+                row.Root.Add(row.Conquered);
+            }
+            // Both tables: opponents defeated attacking and defending (a tribe's: its members' together).
+            row.Oda = Text("", "ranking-number");
+            row.Root.Add(row.Oda);
+            row.Odd = Text("", "ranking-number");
+            row.Root.Add(row.Odd);
             return row;
         }
 
@@ -239,8 +269,6 @@ namespace MedievalWorldConquest
             Show(header, !statsShown);
             Show(list, !statsShown);
             Show(stats.Root, statsShown);
-            // The statistics' three columns take the screen's width.
-            column.EnableInClassList("ranking-column--wide", statsShown);
             if (statsShown)
             {
                 SetText(summary, "The realm's statistics, as they stand.");
@@ -252,7 +280,7 @@ namespace MedievalWorldConquest
             SetText(headerName, tribesShown ? "Tribe" : "Lord");
             Show(headerMembers, tribesShown);
             Show(headerBloc, tribesShown);
-            column.EnableInClassList("ranking-column--tribes", tribesShown);
+            foreach (var h in new[] { headerTribe, headerConquered }) Show(h, !tribesShown);
             if (tribesShown)
             {
                 RefreshTribes(world);
@@ -298,6 +326,9 @@ namespace MedievalWorldConquest
                 Show(row.Note, r.Villages == 0);
                 SetText(row.Villages, $"{r.Villages:N0}");
                 SetText(row.Points, $"{r.Points:N0}");
+                SetText(row.Conquered, $"{world.StatOf(r.Player, StatKind.VillagesConquered, StatPeriod.AllTime):N0}");
+                SetText(row.Oda, $"{world.StatOf(r.Player, StatKind.DefeatedAttacking, StatPeriod.AllTime):N0}");
+                SetText(row.Odd, $"{world.StatOf(r.Player, StatKind.DefeatedDefending, StatPeriod.AllTime):N0}");
             }
             int own = world.HumanVillages().Count;
             string goal = $"You hold {own:N0} of the {world.GoalVillageCount:N0} {world.GoalVillagesLabel} ({world.HumanShare:P1}). " +

@@ -293,11 +293,14 @@ namespace MedievalWorldConquest.Simulation
             if (WorldStats == null || WorldStats.Length != StatKinds) WorldStats = Resized(WorldStats, StatKinds);
             if (WorldStatsDayStart == null || WorldStatsDayStart.Length != StatKinds) WorldStatsDayStart = Resized(WorldStatsDayStart, StatKinds);
             if (StatHistory == null) StatHistory = new List<DayStats>();
+            if (Records == null) Records = new RealmRecords();
             if (TipsShown == null) TipsShown = new List<int>();
             // Version 21: the Account Manager (nothing managed yet, but its rounds start).
             if (ManagedVillages == null) ManagedVillages = new List<ManagedVillage>();
             if (CustomTemplates == null) CustomTemplates = new List<BuildTemplate>();
             foreach (var m in ManagedVillages) m.TroopTargets = Resized(m.TroopTargets, Units.Count);
+            foreach (var m in ManagedVillages) if (m.TroopTemplate == null) m.TroopTemplate = "";
+            if (CustomTroopTemplates == null) CustomTroopTemplates = new List<TroopTemplate>();
             // Version 22: the Account Manager splits spending between buildings and troops.
             if (savedVersion < 22)
                 foreach (var m in ManagedVillages)

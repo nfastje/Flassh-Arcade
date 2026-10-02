@@ -146,7 +146,7 @@ namespace MedievalWorldConquest
             {
                 game.SelectVillage(id);
                 ShowView(View.Village);
-            });
+            }, game.RenameVillage);
             hud.Add(overviewPanel.Root);
             managerPanel = new ManagerPanel(game, links, AskToConfirm);
             hud.Add(managerPanel.Root);

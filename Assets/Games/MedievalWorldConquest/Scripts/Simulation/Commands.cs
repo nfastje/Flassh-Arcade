@@ -434,6 +434,7 @@ namespace MedievalWorldConquest.Simulation
             NoteWarLosses(command.OwnerId, PopulationOf(attackerLost), defenderOwner, PopulationOf(defenderLost));
             AddStat(defenderOwner, StatKind.DefeatedDefending, Total(attackerLost));
             AddStat(command.OwnerId, StatKind.Loot, loot.Wood + loot.Clay + loot.Iron);
+            NoteBattleRecords(FindPlayer(command.OwnerId), target, loot.Wood + loot.Clay + loot.Iron, Total(attackerLost) + Total(defenderLost));
 
             AiLearnFromBattle(command, target, result, defenders, defenderLost, Total(survivors) > 0, loot, report.LootCapacity, report);
 

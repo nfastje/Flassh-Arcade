@@ -138,7 +138,7 @@ namespace MedievalWorldConquest.Tests
         {
             var (_, none) = Managed(0, 4);
             var (world, half) = Managed(50, 4);
-            Assert.Greater(Spearmen(half), Spearmen(none) + 100, $"troops are trained while the template saves up ({Spearmen(half)} vs {Spearmen(none)})");
+            Assert.Greater(Spearmen(half), 2 * Spearmen(none), $"troops are trained while the template saves up ({Spearmen(half)} vs {Spearmen(none)})");
             int before = Managed(50, 0).v.Points;
             Assert.Greater(half.Points, before + 30, $"and the template still moves on ({before} → {half.Points}; {none.Points} with no troops)");
             var m = world.ManagementOf(half.Id);
@@ -153,6 +153,56 @@ namespace MedievalWorldConquest.Tests
             var (_, half) = Managed(50, 4);
             Assert.Greater(Spearmen(all), Spearmen(half), $"{Spearmen(all)} vs {Spearmen(half)}");
             Assert.Less(all.Points, half.Points, $"{all.Points} vs {half.Points}");
+        }
+
+        [Test]
+        public void VillagesFollowTroopTemplatesUntilGivenTheirOwnNumbers()
+        {
+            var world = NewWorld();
+            var v = world.PlayerVillage;
+            Assert.IsNull(world.CreateTroopTemplate("Farmers", "Offensive"));
+            Assert.IsNotNull(world.CreateTroopTemplate("Farmers", null), "names are unique");
+            var farmers = world.FindTroopTemplate("Farmers");
+            Assert.AreEqual(6000, farmers.Troops[(int)UnitType.Axeman], "copied from the game's own");
+
+            world.SetVillageTroopTemplate(v, "Farmers");
+            var m = world.ManagementOf(v.Id);
+            Assert.AreEqual("Farmers", m.TroopTemplate);
+            Assert.AreEqual(6000, m.TroopTargets[(int)UnitType.Axeman]);
+
+            // Editing the template reaches the villages that follow it.
+            farmers.Troops[(int)UnitType.LightCavalry] = 900;
+            world.SyncTroopTemplates();
+            Assert.AreEqual(900, m.TroopTargets[(int)UnitType.LightCavalry]);
+
+            // Saving the same numbers (a new share, say) keeps it following; different numbers make them its own.
+            world.SetTroopTargets(v, (int[])m.TroopTargets.Clone(), 75);
+            Assert.AreEqual("Farmers", m.TroopTemplate);
+            var own = (int[])m.TroopTargets.Clone();
+            own[(int)UnitType.Axeman] = 10;
+            world.SetTroopTargets(v, own, 75);
+            Assert.AreEqual("", m.TroopTemplate);
+
+            // A deleted template's villages keep its numbers.
+            world.SetVillageTroopTemplate(v, "Farmers");
+            Assert.IsTrue(world.DeleteTroopTemplate("Farmers"));
+            Assert.AreEqual("", m.TroopTemplate);
+            Assert.AreEqual(900, m.TroopTargets[(int)UnitType.LightCavalry]);
+            Assert.IsFalse(world.DeleteTroopTemplate("Defensive"), "the game's own stay");
+        }
+
+        [Test]
+        public void TheStatusSaysWhenTroopsCantBeTrainedHere()
+        {
+            var world = NewWorld();
+            var v = world.PlayerVillage;
+            world.SetVillageTemplate(v, "Economy"); // no stable, ever
+            var targets = new int[Units.Count];
+            targets[(int)UnitType.LightCavalry] = 500;
+            world.SetTroopTargets(v, targets);
+            StringAssert.Contains("Can't train Light Cavalry: needs Stable", world.ManagerStatus(v));
+            world.SetVillageTemplate(v, "Offensive"); // builds a stable later on: no warning
+            StringAssert.DoesNotContain("Can't train", world.ManagerStatus(v));
         }
 
         [Test]

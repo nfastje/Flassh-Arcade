@@ -28,6 +28,19 @@ namespace MedievalWorldConquest.Simulation
         [NonSerialized] public bool BuiltIn;
     }
 
+    /// <summary>
+    /// A named set of troop targets (how many of each unit), for villages to follow. The game's own can be viewed
+    /// and copied; the player's are kept in their profile, so every world they play has them.
+    /// </summary>
+    [Serializable]
+    public class TroopTemplate
+    {
+        public string Name;
+        public int[] Troops = new int[Units.Count];
+        /// <summary>One of the game's own (they can be copied, not changed).</summary>
+        [NonSerialized] public bool BuiltIn;
+    }
+
     /// <summary>What the Account Manager does for one of the player's villages.</summary>
     [Serializable]
     public class ManagedVillage
@@ -37,6 +50,11 @@ namespace MedievalWorldConquest.Simulation
         public string Template = "";
         /// <summary>How many of each unit the village should have (at home, out, or in training); 0: none wanted.</summary>
         public int[] TroopTargets = new int[Units.Count];
+        /// <summary>
+        /// The troop template the village follows ("": none, its own numbers). Its numbers are kept in
+        /// <see cref="TroopTargets"/> too, so the village carries on as it was if the template is deleted.
+        /// </summary>
+        public string TroopTemplate = "";
         /// <summary>
         /// The percentage of the village's spending that goes to troops (and their research) while it has both
         /// buildings and troops still to get: whichever side is behind its share gets first call on the stores.
@@ -83,42 +101,119 @@ namespace MedievalWorldConquest.Simulation
         const BuildingType Timber = BuildingType.TimberCamp, Clay = BuildingType.ClayPit, Iron = BuildingType.IronMine,
             Farm = BuildingType.Farm, Store = BuildingType.Warehouse, HQ = BuildingType.Headquarters;
 
-        /// <summary>The game's own build templates: an even economy first, or a village for defense or attack.</summary>
+        /// <summary>
+        /// The game's own build templates: an even economy first, or a village for defense or attack. Each pushes its
+        /// Headquarters to 10 before the mines go past 7 (it speeds every build after it), walls up to 20 by the
+        /// middle-to-late game, and ends with an academy once its requirements are met.
+        /// </summary>
         public static readonly BuildTemplate[] BuiltInTemplates =
         {
             Template("Economy",
                 (Timber, 2), (Clay, 2), (Iron, 2), (Store, 2), (Farm, 2), (HQ, 3), (Timber, 4), (Clay, 4), (Iron, 4), (Store, 4), (Farm, 4),
-                (HQ, 5), (BuildingType.Barracks, 1), (Timber, 7), (Clay, 7), (Iron, 7), (Store, 7), (Farm, 7), (BuildingType.Market, 1),
-                (BuildingType.Smithy, 1), (BuildingType.Wall, 3), (Timber, 10), (Clay, 10), (Iron, 10), (Store, 10), (Farm, 10), (HQ, 10),
+                (HQ, 5), (BuildingType.Barracks, 1), (Timber, 7), (Clay, 7), (Iron, 7), (Store, 7), (Farm, 7), (HQ, 10), (BuildingType.Market, 1),
+                (BuildingType.Smithy, 1), (BuildingType.Wall, 3), (Timber, 10), (Clay, 10), (Iron, 10), (Store, 10), (Farm, 10), (BuildingType.Barracks, 5),
                 (BuildingType.HidingPlace, 3), (Timber, 15), (Clay, 15), (Iron, 15), (Store, 15), (Farm, 15), (HQ, 15), (BuildingType.Market, 5),
-                (BuildingType.Wall, 10), (Timber, 20), (Clay, 20), (Iron, 20), (Store, 20), (Farm, 20), (HQ, 20), (BuildingType.Smithy, 10),
-                (BuildingType.Market, 10), (Timber, 25), (Clay, 25), (Iron, 25), (Store, 25), (Farm, 25), (BuildingType.Smithy, 20),
-                (Timber, 30), (Clay, 30), (Iron, 30), (Store, 30), (Farm, 30), (BuildingType.Wall, 20)),
+                (BuildingType.Wall, 10), (BuildingType.Barracks, 10), (Timber, 20), (Clay, 20), (Iron, 20), (Store, 20), (Farm, 20), (HQ, 20),
+                (BuildingType.Smithy, 10), (BuildingType.Wall, 15), (BuildingType.Market, 10), (Timber, 25), (Clay, 25), (Iron, 25), (Store, 25), (Farm, 25),
+                (BuildingType.Smithy, 20), (BuildingType.Academy, 1), (BuildingType.Wall, 20), (Timber, 30), (Clay, 30), (Iron, 30), (Store, 30), (Farm, 30)),
             Template("Defensive",
                 (Timber, 2), (Clay, 2), (Iron, 2), (Store, 2), (Farm, 2), (HQ, 3), (BuildingType.Barracks, 1), (BuildingType.Wall, 3),
                 (Timber, 5), (Clay, 5), (Iron, 5), (Store, 5), (Farm, 5), (HQ, 5), (BuildingType.Smithy, 1), (BuildingType.Barracks, 5),
-                (BuildingType.Wall, 10), (Timber, 10), (Clay, 10), (Iron, 10), (Store, 10), (Farm, 10), (HQ, 10), (BuildingType.Smithy, 5),
+                (BuildingType.Wall, 10), (HQ, 10), (Timber, 10), (Clay, 10), (Iron, 10), (Store, 10), (Farm, 10), (BuildingType.Smithy, 5),
                 (BuildingType.Market, 1), (BuildingType.Stable, 1), (BuildingType.Barracks, 10), (BuildingType.Wall, 15), (Timber, 15),
                 (Clay, 15), (Iron, 15), (Store, 15), (Farm, 15), (BuildingType.Smithy, 10), (BuildingType.Stable, 10), (BuildingType.Wall, 20),
-                (Timber, 20), (Clay, 20), (Iron, 20), (Store, 20), (Farm, 20), (HQ, 20), (BuildingType.Barracks, 20), (BuildingType.Smithy, 20),
+                (BuildingType.Market, 5), (Timber, 20), (Clay, 20), (Iron, 20), (Store, 20), (Farm, 20), (HQ, 20), (BuildingType.Barracks, 20),
+                (BuildingType.Smithy, 20), (BuildingType.Market, 10), (BuildingType.Academy, 1),
                 (Timber, 25), (Clay, 25), (Iron, 25), (Store, 25), (Farm, 30), (BuildingType.Barracks, 25), (Timber, 30), (Clay, 30), (Iron, 30), (Store, 30)),
             Template("Offensive",
                 (Timber, 2), (Clay, 2), (Iron, 2), (Store, 2), (Farm, 2), (HQ, 3), (BuildingType.Barracks, 1), (Timber, 5), (Clay, 5),
-                (Iron, 5), (Store, 5), (Farm, 5), (HQ, 5), (BuildingType.Smithy, 2), (BuildingType.Barracks, 5), (BuildingType.Wall, 5),
-                (Timber, 10), (Clay, 10), (Iron, 10), (Store, 10), (Farm, 10), (HQ, 10), (BuildingType.Smithy, 5), (BuildingType.Market, 1),
+                (Iron, 5), (Store, 5), (Farm, 5), (HQ, 5), (BuildingType.Smithy, 2), (BuildingType.Barracks, 5), (BuildingType.Wall, 5), (HQ, 10),
+                (Timber, 10), (Clay, 10), (Iron, 10), (Store, 10), (Farm, 10), (BuildingType.Smithy, 5), (BuildingType.Market, 1),
                 (BuildingType.Stable, 3), (BuildingType.Smithy, 10), (BuildingType.Workshop, 2), (BuildingType.Barracks, 10), (BuildingType.Stable, 10),
-                (Timber, 15), (Clay, 15), (Iron, 15), (Store, 15), (Farm, 15), (HQ, 15), (BuildingType.Barracks, 15), (BuildingType.Stable, 15),
+                (Timber, 15), (Clay, 15), (Iron, 15), (Store, 15), (Farm, 15), (HQ, 15), (BuildingType.Wall, 15), (BuildingType.Barracks, 15), (BuildingType.Stable, 15),
                 (Timber, 20), (Clay, 20), (Iron, 20), (Store, 20), (Farm, 20), (HQ, 20), (BuildingType.Smithy, 20), (BuildingType.Market, 10),
-                (BuildingType.Barracks, 20), (BuildingType.Stable, 20), (BuildingType.Workshop, 10), (Timber, 25), (Clay, 25), (Iron, 25),
-                (Store, 25), (Farm, 30), (Timber, 30), (Clay, 30), (Iron, 30), (Store, 30), (BuildingType.Wall, 20)),
+                (BuildingType.Academy, 1), (BuildingType.Barracks, 20), (BuildingType.Stable, 20), (BuildingType.Workshop, 10), (Timber, 25), (Clay, 25), (Iron, 25),
+                (Store, 25), (Farm, 30), (BuildingType.Wall, 20), (Timber, 30), (Clay, 30), (Iron, 30), (Store, 30)),
         };
 
-        /// <summary>Troop targets to start from: a defensive village, or an attacking one.</summary>
-        public static readonly (string name, int[] troops)[] TroopPresets =
+        /// <summary>The game's own troop templates: a defensive village, or an attacking one.</summary>
+        public static readonly TroopTemplate[] BuiltInTroopTemplates =
         {
-            ("Defensive", Troops((UnitType.Spearman, 4000), (UnitType.Swordsman, 3000), (UnitType.Archer, 1500), (UnitType.Scout, 200), (UnitType.HeavyCavalry, 400))),
-            ("Offensive", Troops((UnitType.Axeman, 6000), (UnitType.LightCavalry, 2500), (UnitType.MountedArcher, 300), (UnitType.Scout, 200), (UnitType.Ram, 250), (UnitType.Catapult, 50))),
+            new TroopTemplate { Name = "Defensive", BuiltIn = true, Troops = Troops((UnitType.Spearman, 4000), (UnitType.Swordsman, 3000), (UnitType.Archer, 1500), (UnitType.Scout, 200), (UnitType.HeavyCavalry, 400)) },
+            new TroopTemplate { Name = "Offensive", BuiltIn = true, Troops = Troops((UnitType.Axeman, 6000), (UnitType.LightCavalry, 2500), (UnitType.MountedArcher, 300), (UnitType.Scout, 200), (UnitType.Ram, 250), (UnitType.Catapult, 50)) },
         };
+
+        /// <summary>
+        /// The player's own troop templates. They live in the player's profile (shared by all their worlds), not
+        /// in the world's save: the game hands them over when a world is opened (see <see cref="SyncTroopTemplates"/>).
+        /// </summary>
+        [NonSerialized] public List<TroopTemplate> CustomTroopTemplates = new List<TroopTemplate>();
+
+        /// <summary>Every troop template: the game's own, then the player's.</summary>
+        public List<TroopTemplate> AllTroopTemplates()
+        {
+            var all = new List<TroopTemplate>(BuiltInTroopTemplates);
+            if (CustomTroopTemplates != null) all.AddRange(CustomTroopTemplates);
+            return all;
+        }
+
+        public TroopTemplate FindTroopTemplate(string name) =>
+            string.IsNullOrEmpty(name) ? null : AllTroopTemplates().Find(t => t.Name == name);
+
+        /// <summary>A village follows a troop template (its targets become the template's), or none ("": keeps its numbers).</summary>
+        public void SetVillageTroopTemplate(Village v, string name)
+        {
+            if (v == null || v.OwnerId != HumanPlayer?.Id) return;
+            var m = ManagementOf(v.Id, true);
+            var t = FindTroopTemplate(name);
+            m.TroopTemplate = t?.Name ?? "";
+            if (t != null) m.TroopTargets = Resized((int[])t.Troops.Clone(), Units.Count);
+            Manage(v);
+        }
+
+        /// <summary>
+        /// Brings the villages following troop templates up to date with them: after a template is edited, or when
+        /// a world is opened with the profile's templates. A village whose template is gone keeps its numbers.
+        /// </summary>
+        public void SyncTroopTemplates()
+        {
+            if (ManagedVillages == null) return;
+            foreach (var m in ManagedVillages)
+            {
+                if (string.IsNullOrEmpty(m.TroopTemplate)) continue;
+                var t = FindTroopTemplate(m.TroopTemplate);
+                if (t == null) m.TroopTemplate = "";
+                else m.TroopTargets = Resized((int[])t.Troops.Clone(), Units.Count);
+            }
+        }
+
+        /// <summary>
+        /// A new troop template of the player's, copied from another (or empty). Returns why not, or null. Names
+        /// must be unique among the troop templates, and not empty.
+        /// </summary>
+        public string CreateTroopTemplate(string name, string copyFrom)
+        {
+            name = (name ?? "").Trim();
+            if (name.Length == 0) return "Give the template a name.";
+            if (name.Length > 24) name = name.Substring(0, 24).TrimEnd();
+            if (FindTroopTemplate(name) != null) return "There's already a troop template by that name.";
+            var t = new TroopTemplate { Name = name };
+            var from = FindTroopTemplate(copyFrom);
+            if (from != null) t.Troops = Resized((int[])from.Troops.Clone(), Units.Count);
+            if (CustomTroopTemplates == null) CustomTroopTemplates = new List<TroopTemplate>();
+            CustomTroopTemplates.Add(t);
+            return null;
+        }
+
+        /// <summary>Deletes one of the player's troop templates; villages that followed it keep its numbers as their own.</summary>
+        public bool DeleteTroopTemplate(string name)
+        {
+            var t = CustomTroopTemplates?.Find(x => x.Name == name);
+            if (t == null) return false;
+            CustomTroopTemplates.Remove(t);
+            SyncTroopTemplates();
+            return true;
+        }
 
         static int[] Troops(params (UnitType type, int count)[] units)
         {
@@ -157,6 +252,10 @@ namespace MedievalWorldConquest.Simulation
         }
 
         /// <summary>Sets a village's troop targets, and the share of its spending that goes to troops (percent).</summary>
+        /// <remarks>
+        /// Numbers different from the village's troop template's make them its own (it stops following the
+        /// template); the same numbers (only the share changed, say) keep it following.
+        /// </remarks>
         public void SetTroopTargets(Village v, int[] targets, int troopShare = DefaultTroopShare)
         {
             if (v == null || v.OwnerId != HumanPlayer?.Id || targets == null) return;
@@ -164,7 +263,16 @@ namespace MedievalWorldConquest.Simulation
             m.TroopTargets = new int[Units.Count];
             for (int i = 0; i < Units.Count && i < targets.Length; i++) m.TroopTargets[i] = Math.Max(0, targets[i]);
             m.TroopShare = Math.Max(0, Math.Min(100, troopShare));
+            var t = FindTroopTemplate(m.TroopTemplate);
+            if (t == null || !SameTroops(t.Troops, m.TroopTargets)) m.TroopTemplate = "";
             Manage(v);
+        }
+
+        static bool SameTroops(int[] a, int[] b)
+        {
+            for (int i = 0; i < Units.Count; i++)
+                if ((a != null && i < a.Length ? a[i] : 0) != (b != null && i < b.Length ? b[i] : 0)) return false;
+            return true;
         }
 
         /// <summary>
@@ -366,20 +474,54 @@ namespace MedievalWorldConquest.Simulation
         {
             var m = ManagementOf(v.Id);
             var template = m == null ? null : FindTemplate(m.Template);
-            if (template == null) return "No build template.";
-            var step = NextStep(v, template);
-            if (step == null) return $"{template.Name}: finished.";
-            var check = CheckBuild(v, step.Building);
-            string what = $"{Buildings.Get(step.Building).Name} {step.Level}";
-            return check.Status switch
+            if (template == null)
             {
-                BuildStatus.QueueFull => $"Next: {what} (the queue is full)",
-                BuildStatus.NotEnoughResources => $"Next: {what} (saving up)",
-                BuildStatus.NeedsBuilding => $"Next: {what} (first {Buildings.Get(check.Required.Building).Name} {check.Required.Level})",
-                BuildStatus.FarmTooSmall => $"Next: {what} (first a bigger farm)",
-                BuildStatus.WarehouseTooSmall => $"Next: {what} (first a bigger warehouse)",
-                _ => $"Next: {what}",
-            };
+                string alone = m == null ? null : TroopWarning(v, m, null);
+                return alone == null ? "No build template." : $"No build template.  ·  {alone}";
+            }
+            string warning = m == null ? null : TroopWarning(v, m, template);
+            string building;
+            var step = NextStep(v, template);
+            if (step == null) building = $"{template.Name}: finished.";
+            else
+            {
+                var check = CheckBuild(v, step.Building);
+                string what = $"{Buildings.Get(step.Building).Name} {step.Level}";
+                building = check.Status switch
+                {
+                    BuildStatus.QueueFull => $"Next: {what} (the queue is full)",
+                    BuildStatus.NotEnoughResources => $"Next: {what} (saving up)",
+                    BuildStatus.NeedsBuilding => $"Next: {what} (first {Buildings.Get(check.Required.Building).Name} {check.Required.Level})",
+                    BuildStatus.FarmTooSmall => $"Next: {what} (first a bigger farm)",
+                    BuildStatus.WarehouseTooSmall => $"Next: {what} (first a bigger warehouse)",
+                    _ => $"Next: {what}",
+                };
+            }
+            return warning == null ? building : $"{building}  ·  {warning}";
+        }
+
+        /// <summary>
+        /// A troop target the village can't train and its build template will never make possible (light cavalry with
+        /// no stable to come, say), in words, or null: the Manager says so rather than build what wasn't asked for.
+        /// </summary>
+        string TroopWarning(Village v, ManagedVillage m, BuildTemplate template)
+        {
+            if (m.TroopTargets == null) return null;
+            foreach (var type in Units.InDisplayOrder)
+            {
+                int target = (int)type < m.TroopTargets.Length ? m.TroopTargets[(int)type] : 0;
+                if (target <= 0) continue;
+                var u = Units.Get(type);
+                int need = Math.Max(1, u.RequiredLevel);
+                if (v.Level(u.Building) + v.QueuedCount(u.Building) >= need) continue;
+                int planned = 0;
+                if (template != null)
+                    foreach (var s in template.Steps)
+                        if (s.Building == u.Building) planned = Math.Max(planned, s.Level);
+                if (planned >= need) continue;
+                return $"Can't train {u.Name}: needs {Buildings.Get(u.Building).Name} {need}";
+            }
+            return null;
         }
     }
 }
